@@ -11,15 +11,123 @@
 #include <errno.h>
 #include <ctype.h>
 #include "db.h"
+#include "lxml.h"
+#include "json.h"
 
-// Declare the rest_register function
-int rest_register(const char *username, const char *password);
+// Declare the functions before using them
+static int check_user(void *cls, struct MHD_Connection *connection,
+                      const char *url, const char *method, const char *version,
+                      const char *upload_data, size_t *upload_data_size, void **con_cls);
+static int add_user(void *cls, struct MHD_Connection *connection,
+                    const char *url, const char *method, const char *version,
+                    const char *upload_data, size_t *upload_data_size, void **con_cls);
 
 #define UNIX_SOCKET_PATH "/tmp/admin_socket"
 #define INET_PORT 12345
 #define REST_PORT 8888
 #define BUFFER_SIZE 256
+#define UPLOAD_BUFFER_SIZE 1024
+
 void handle_client(int client_fd);
+void cleanup_resources();
+void handle_signal(int signal);
+
+struct UploadInfo {
+    char buffer[UPLOAD_BUFFER_SIZE];
+    size_t buffer_size;
+    FILE *fp;
+};
+
+static void add_cors_headers(struct MHD_Response *response) {
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    MHD_add_response_header(response, "Access-Control-Allow-Headers", "Content-Type");
+}
+
+static int upload_xml(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
+                      const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
+    struct UploadInfo *upload_info = *con_cls;
+    if (NULL == upload_info) {
+        upload_info = malloc(sizeof(struct UploadInfo));
+        if (NULL == upload_info)
+            return MHD_NO;
+        upload_info->buffer_size = 0;
+        upload_info->fp = fopen("uploaded.xml", "wb");
+        if (NULL == upload_info->fp) {
+            free(upload_info);
+            return MHD_NO;
+        }
+        *con_cls = upload_info;
+        return MHD_YES;
+    }
+
+    if (0 != *upload_data_size) {
+        fwrite(upload_data, 1, *upload_data_size, upload_info->fp);
+        *upload_data_size = 0;
+        return MHD_YES;
+    } else {
+        fclose(upload_info->fp);
+
+        // Conversia XML la JSON
+        XMLDocument doc;
+        if (XMLDocument_load(&doc, "uploaded.xml")) {
+            cJSON *json = XMLDocumentToJSON(&doc);
+            SaveJSONToFile("converted.json", json);
+            cJSON_Delete(json);
+            XMLDocument_free(&doc);
+        }
+
+        const char *page = "<html><body>File uploaded and converted successfully.</body></html>";
+        struct MHD_Response *response = MHD_create_response_from_buffer(strlen(page), (void *)page, MHD_RESPMEM_PERSISTENT);
+        add_cors_headers(response);
+        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
+        free(upload_info);
+        *con_cls = NULL;
+        return ret;
+    }
+}
+
+static int download_json(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
+                         const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
+    FILE *fp = fopen("converted.json", "rb");
+    if (!fp) {
+        return MHD_NO;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *file_data = malloc(file_size);
+    fread(file_data, 1, file_size, fp);
+    fclose(fp);
+
+    struct MHD_Response *response = MHD_create_response_from_buffer(file_size, file_data, MHD_RESPMEM_MUST_FREE);
+    MHD_add_response_header(response, "Content-Disposition", "attachment; filename=\"converted.json\"");
+    add_cors_headers(response);
+    int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
+                                const char *method, const char *version, const char *upload_data,
+                                size_t *upload_data_size, void **con_cls) {
+    if (0 == strcmp(url, "/upload_xml"))
+        return upload_xml(cls, connection, url, method, version, upload_data, upload_data_size, con_cls);
+
+    if (0 == strcmp(url, "/download_json"))
+        return download_json(cls, connection, url, method, version, upload_data, upload_data_size, con_cls);
+
+    if (0 == strcmp(url, "/check_user"))
+        return check_user(cls, connection, url, method, version, upload_data, upload_data_size, con_cls);
+
+    if (0 == strcmp(url, "/add_user"))
+        return add_user(cls, connection, url, method, version, upload_data, upload_data_size, con_cls);
+
+    return MHD_NO;
+}
 
 void trim_whitespace(char *str) {
     char *end;
@@ -32,6 +140,7 @@ void trim_whitespace(char *str) {
     }
     *(end + 1) = '\0';
 }
+
 void handle_client(int client_fd) {
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, BUFFER_SIZE);  // Clear buffer
@@ -46,7 +155,6 @@ void handle_client(int client_fd) {
         printf("Debug: Processed command: %s, username: %s, password: %s\n", command, username, password);
 
         if (strcmp(command, "LOGIN") == 0) {
-
             if (db_check_user(username, password)) {
                 snprintf(buffer, sizeof(buffer), "Login successful");
             } else {
@@ -75,17 +183,11 @@ void handle_client(int client_fd) {
     close(client_fd);
 }
 
-
-
-// Rest of your code...
-
 struct ConnectionInfo {
     struct MHD_PostProcessor *pp;
     char username[BUFFER_SIZE];
     char password[BUFFER_SIZE];
-    };
-
-
+};
 
 static int send_cors_headers(struct MHD_Connection *connection, struct MHD_Response *response) {
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
@@ -296,7 +398,7 @@ int main() {
         exit(-1);
     }
 
-    daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, REST_PORT, NULL, NULL, &check_user, NULL,
+    daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, REST_PORT, NULL, NULL, &answer_to_connection, NULL,
                                MHD_OPTION_NOTIFY_COMPLETED, request_completed_callback, NULL,
                                MHD_OPTION_END);
     if (NULL == daemon) return 1;
