@@ -67,15 +67,13 @@ int db_check_user(const char *username, const char *password, int *role) {
 
     if (rc == SQLITE_ROW) {
         *role = sqlite3_column_int(res, 0);
+        sqlite3_finalize(res);
+        return 1;
     } else {
         fprintf(stderr, "Failed to step statement: %s\n", sqlite3_errmsg(db));
         sqlite3_finalize(res);
         return 0;
     }
-
-    sqlite3_finalize(res);
-    printf("db_check_user: username=%s, password=%s, role=%d\n", username, password, *role);
-    return 1;
 }
 
 int db_user_exists(const char *username) {

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <ctype.h> 
+#include <ctype.h>
 #define SERVER_PORT 12345
 #define SERVER_IP "127.0.0.1"
 #define BUFFER_SIZE 256
@@ -22,7 +22,6 @@ void trim_whitespace(char *str) {
     *(end + 1) = '\0';
 }
 
-
 void show_action_menu() {
     printf("1. Login\n");
     printf("2. Register\n");
@@ -30,8 +29,36 @@ void show_action_menu() {
     fflush(stdout); // Flush after writing to stdout
 }
 
-void login_via_inet(int socket_fd) {
+int connect_to_server() {
+    int socket_fd;
+    struct sockaddr_in server_addr;
+
+    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == -1) {
+        perror("Socket error");
+        return -1;
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Connect error");
+        close(socket_fd);
+        return -1;
+    }
+
+    return socket_fd;
+}
+
+void login_via_inet() {
+    int socket_fd;
     char username[BUFFER_SIZE / 2], password[BUFFER_SIZE / 2], buffer[BUFFER_SIZE], response[BUFFER_SIZE];
+
+    socket_fd = connect_to_server();
+    if (socket_fd == -1) return;
 
     printf("Username: ");
     fgets(username, sizeof(username), stdin);
@@ -56,10 +83,16 @@ void login_via_inet(int socket_fd) {
     } else {
         printf("Login failed. Try again.\n");
     }
+
+    close(socket_fd);
 }
 
-void register_via_inet(int socket_fd) {
-    char username[BUFFER_SIZE / 2], password[BUFFER_SIZE / 2], buffer[BUFFER_SIZE];
+void register_via_inet() {
+    int socket_fd;
+    char username[BUFFER_SIZE / 2], password[BUFFER_SIZE / 2], buffer[BUFFER_SIZE], response[BUFFER_SIZE];
+
+    socket_fd = connect_to_server();
+    if (socket_fd == -1) return;
 
     printf("Register with your username: ");
     fgets(username, BUFFER_SIZE / 2, stdin);
@@ -71,49 +104,30 @@ void register_via_inet(int socket_fd) {
 
     snprintf(buffer, BUFFER_SIZE, "REGISTER %.100s %.100s", username, password);
     write(socket_fd, buffer, strlen(buffer));
-    memset(buffer, 0, sizeof(buffer));
+    memset(response, 0, sizeof(response));
 
-    read(socket_fd, buffer, BUFFER_SIZE);
-    printf("Received: %s\n", buffer);
+    read(socket_fd, response, BUFFER_SIZE);
+    printf("Received: %s\n", response);
     fflush(stdout);
 
-    memset(buffer, 0, sizeof(buffer));
+    close(socket_fd);
     show_action_menu(); // Show menu again after registration
 }
 
 int main() {
-    int socket_fd;
-    struct sockaddr_in server_addr;
-
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd == -1) {
-        perror("Socket error");
-        return -1;
-    }
-
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-    if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        perror("Connect error");
-        return -1;
-    }
+    char choice[BUFFER_SIZE];
 
     show_action_menu();
-    char choice[BUFFER_SIZE];
     while (1) {
         printf("Enter choice: ");
         fgets(choice, BUFFER_SIZE, stdin);
         choice[strcspn(choice, "\n")] = 0;
 
         if (strcmp(choice, "1") == 0) {
-            login_via_inet(socket_fd);
+            login_via_inet();
         } else if (strcmp(choice, "2") == 0) {
-            register_via_inet(socket_fd);
+            register_via_inet();
         } else if (strcmp(choice, "3") == 0) {
-            close(socket_fd);
             exit(0);
         } else {
             printf("Invalid choice. Please try again.\n");

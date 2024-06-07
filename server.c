@@ -143,7 +143,7 @@ void trim_whitespace(char *str) {
 
 void handle_client(int client_fd, int is_unix_socket) {
     char buffer[BUFFER_SIZE];
-    memset(buffer, 0, BUFFER_SIZE);
+    memset(buffer, 0, BUFFER_SIZE);  // Asigură-te că bufferul este gol
 
     while (read(client_fd, buffer, BUFFER_SIZE) > 0) {
         printf("Debug: Received raw data: %s\n", buffer);
@@ -169,6 +169,7 @@ void handle_client(int client_fd, int is_unix_socket) {
             write(client_fd, buffer, strlen(buffer) + 1);
             memset(username, 0, BUFFER_SIZE);
             memset(password, 0, BUFFER_SIZE);
+            memset(buffer, 0, BUFFER_SIZE);  // Resetează bufferul după fiecare cerere
             break;
         } else if (strcmp(command, "REGISTER") == 0) {
             if (!db_user_exists(username)) {
@@ -181,9 +182,10 @@ void handle_client(int client_fd, int is_unix_socket) {
             write(client_fd, buffer, strlen(buffer) + 1);
             memset(username, 0, BUFFER_SIZE);
             memset(password, 0, BUFFER_SIZE);
+            memset(buffer, 0, BUFFER_SIZE);  // Resetează bufferul după fiecare cerere
             break;
         }
-        memset(buffer, 0, BUFFER_SIZE);
+        memset(buffer, 0, BUFFER_SIZE);  // Resetează bufferul după fiecare cerere
     }
     close(client_fd);
 }
@@ -229,12 +231,21 @@ static int check_user(void *cls, struct MHD_Connection *connection,
 
     int role;
     if (db_check_user(username, password, &role)) {
-        const char *response_msg = "user exists";
-        struct MHD_Response *response = MHD_create_response_from_buffer(strlen(response_msg), (void *)response_msg, MHD_RESPMEM_PERSISTENT);
-        send_cors_headers(connection, response);
-        int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-        MHD_destroy_response(response);
-        return ret;
+        if (role == 1) {  // Admin role
+            const char *response_msg = "Access denied";
+            struct MHD_Response *response = MHD_create_response_from_buffer(strlen(response_msg), (void *)response_msg, MHD_RESPMEM_PERSISTENT);
+            send_cors_headers(connection, response);
+            int ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
+            MHD_destroy_response(response);
+            return ret;
+        } else {
+            const char *response_msg = "user exists";
+            struct MHD_Response *response = MHD_create_response_from_buffer(strlen(response_msg), (void *)response_msg, MHD_RESPMEM_PERSISTENT);
+            send_cors_headers(connection, response);
+            int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
+        }
     } else {
         const char *response_msg = "user does not exist";
         struct MHD_Response *response = MHD_create_response_from_buffer(strlen(response_msg), (void *)response_msg, MHD_RESPMEM_PERSISTENT);
@@ -249,23 +260,24 @@ static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *
                         const char *content_type, const char *transfer_encoding, const char *data, uint64_t off, size_t size) {
     struct ConnectionInfo *con_info = coninfo_cls;
     if (0 == strcmp(key, "username")) {
-        if ((size > 0) && (size <= BUFFER_SIZE)) {
+        if ((size > 0) && (size < BUFFER_SIZE)) {
             strncpy(con_info->username, data, size);
             con_info->username[size] = '\0';
+            printf("Debug: Username received: %s\n", con_info->username);
         } else {
             return MHD_NO;
         }
     } else if (0 == strcmp(key, "password")) {
-        if ((size > 0) && (size <= BUFFER_SIZE)) {
+        if ((size > 0) && (size < BUFFER_SIZE)) {
             strncpy(con_info->password, data, size);
             con_info->password[size] = '\0';
+            printf("Debug: Password received: %s\n", con_info->password);
         } else {
             return MHD_NO;
         }
     }
     return MHD_YES;
 }
-
 static int add_user(void *cls, struct MHD_Connection *connection,
                     const char *url, const char *method, const char *version,
                     const char *upload_data, size_t *upload_data_size, void **con_cls) {
@@ -285,20 +297,24 @@ static int add_user(void *cls, struct MHD_Connection *connection,
         return MHD_YES;
     }
 
-    MHD_post_process(con_info->pp, upload_data, *upload_data_size);
     if (*upload_data_size != 0) {
+        MHD_post_process(con_info->pp, upload_data, *upload_data_size);
+        *upload_data_size = 0;
         return MHD_YES;
     }
 
     const char *username = con_info->username;
     const char *password = con_info->password;
 
-    if (username == NULL || password == NULL) {
+    printf("Debug: Received POST data - Username: %s, Password: %s\n", username, password);
+
+    if (username == NULL || password == NULL || strlen(username) == 0 || strlen(password) == 0) {
         const char *error = "Username or password not provided";
         struct MHD_Response *response = MHD_create_response_from_buffer(strlen(error), (void *)error, MHD_RESPMEM_PERSISTENT);
         send_cors_headers(connection, response);
         int ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
         MHD_destroy_response(response);
+        printf("Debug: Missing username or password\n");
         return ret;
     }
 
@@ -312,6 +328,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
         send_cors_headers(connection, response);
         int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
         MHD_destroy_response(response);
+        printf("Debug: User added successfully\n");
         return ret;
     } else {
         const char *response_msg = "username already exists";
@@ -319,9 +336,11 @@ static int add_user(void *cls, struct MHD_Connection *connection,
         send_cors_headers(connection, response);
         int ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
         MHD_destroy_response(response);
+        printf("Debug: Username already exists\n");
         return ret;
     }
 }
+
 
 static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
     if (NULL == *con_cls) return;
@@ -331,6 +350,7 @@ static void request_completed_callback(void *cls, struct MHD_Connection *connect
     }
     free(con_info);
     *con_cls = NULL;
+    printf("Debug: Request completed and resources freed\n");
 }
 
 void cleanup_resources() {
