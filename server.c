@@ -28,7 +28,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
 #define BUFFER_SIZE 256
 #define UPLOAD_BUFFER_SIZE 1024
 
-void handle_client(int client_fd);
+void handle_client(int client_fd, int is_unix_socket);
 void cleanup_resources();
 void handle_signal(int signal);
 
@@ -141,13 +141,14 @@ void trim_whitespace(char *str) {
     *(end + 1) = '\0';
 }
 
-void handle_client(int client_fd) {
+void handle_client(int client_fd, int is_unix_socket) {
     char buffer[BUFFER_SIZE];
-    memset(buffer, 0, BUFFER_SIZE);  // Clear buffer
+    memset(buffer, 0, BUFFER_SIZE);
 
     while (read(client_fd, buffer, BUFFER_SIZE) > 0) {
         printf("Debug: Received raw data: %s\n", buffer);
         char command[BUFFER_SIZE], username[BUFFER_SIZE], password[BUFFER_SIZE];
+        int role;
         sscanf(buffer, "%s %s %s", command, username, password);
         trim_whitespace(username);
         trim_whitespace(password);
@@ -155,15 +156,19 @@ void handle_client(int client_fd) {
         printf("Debug: Processed command: %s, username: %s, password: %s\n", command, username, password);
 
         if (strcmp(command, "LOGIN") == 0) {
-            if (db_check_user(username, password)) {
-                snprintf(buffer, sizeof(buffer), "Login successful");
+            if (db_check_user(username, password, &role)) {
+                if ((is_unix_socket && role == 1) || (!is_unix_socket && role == 0)) {
+                    snprintf(buffer, sizeof(buffer), "Login successful");
+                } else {
+                    snprintf(buffer, sizeof(buffer), "Access denied");
+                }
             } else {
                 snprintf(buffer, sizeof(buffer), "Login failed");
             }
             printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
             memset(username, 0, BUFFER_SIZE);
-            memset(password, 0, BUFFER_SIZE); // Clear buffers
+            memset(password, 0, BUFFER_SIZE);
             break;
         } else if (strcmp(command, "REGISTER") == 0) {
             if (!db_user_exists(username)) {
@@ -175,10 +180,10 @@ void handle_client(int client_fd) {
             printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
             memset(username, 0, BUFFER_SIZE);
-            memset(password, 0, BUFFER_SIZE); // Clear buffers
+            memset(password, 0, BUFFER_SIZE);
             break;
         }
-        memset(buffer, 0, BUFFER_SIZE);  // Clear buffer after processing
+        memset(buffer, 0, BUFFER_SIZE);
     }
     close(client_fd);
 }
@@ -222,7 +227,8 @@ static int check_user(void *cls, struct MHD_Connection *connection,
     trim_whitespace((char *)username);
     trim_whitespace((char *)password);
 
-    if (db_check_user(username, password)) {
+    int role;
+    if (db_check_user(username, password, &role)) {
         const char *response_msg = "user exists";
         struct MHD_Response *response = MHD_create_response_from_buffer(strlen(response_msg), (void *)response_msg, MHD_RESPMEM_PERSISTENT);
         send_cors_headers(connection, response);
@@ -423,7 +429,7 @@ int main() {
                 perror("accept error");
                 exit(-1);
             }
-            handle_client(client_fd);
+            handle_client(client_fd, 1);
         }
 
         if (FD_ISSET(inet_socket_fd, &read_fds)) {
@@ -431,7 +437,7 @@ int main() {
                 perror("accept error");
                 exit(-1);
             }
-            handle_client(client_fd);
+            handle_client(client_fd, 0);
         }
     }
 
