@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <ctype.h>
+#include <time.h>
 #include "db.h"
 #include "lxml.h"
 #include "json.h"
@@ -37,7 +38,20 @@ struct UploadInfo {
     size_t buffer_size;
     FILE *fp;
 };
+static void log_message(const char *message) {
+    FILE *log_file = fopen("server.log", "a");
+    if (log_file == NULL) {
+        perror("Failed to open log file");
+        return;
+    }
 
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    fprintf(log_file, "%04d-%02d-%02d %02d:%02d:%02d: %s\n", 
+            t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, 
+            t->tm_hour, t->tm_min, t->tm_sec, message);
+    fclose(log_file);
+}
 static void add_cors_headers(struct MHD_Response *response) {
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -159,6 +173,9 @@ void handle_client(int client_fd, int is_unix_socket) {
             if (db_check_user(username, password, &role)) {
                 if ((is_unix_socket && role == 1) || (!is_unix_socket && role == 0)) {
                     snprintf(buffer, sizeof(buffer), "Login successful");
+                    char log_msg[BUFFER_SIZE];
+                    snprintf(log_msg, sizeof(log_msg), "User %.100s logged in as %s", username, is_unix_socket ? "admin" : "simple");
+                    log_message(log_msg);
                 } else {
                     snprintf(buffer, sizeof(buffer), "Access denied");
                 }
@@ -175,6 +192,9 @@ void handle_client(int client_fd, int is_unix_socket) {
             if (!db_user_exists(username)) {
                 db_add_user(username, password);
                 snprintf(buffer, sizeof(buffer), "User registered successfully");
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "User %.100s registered as simple", username);
+                log_message(log_msg);
             } else {
                 snprintf(buffer, sizeof(buffer), "Username already exists");
             }
@@ -189,6 +209,8 @@ void handle_client(int client_fd, int is_unix_socket) {
     }
     close(client_fd);
 }
+
+
 
 struct ConnectionInfo {
     struct MHD_PostProcessor *pp;
@@ -244,6 +266,9 @@ static int check_user(void *cls, struct MHD_Connection *connection,
             send_cors_headers(connection, response);
             int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
+            char log_msg[BUFFER_SIZE];
+            snprintf(log_msg, sizeof(log_msg), "User %s logged in as rest", username);
+            log_message(log_msg);
             return ret;
         }
     } else {
@@ -329,6 +354,9 @@ static int add_user(void *cls, struct MHD_Connection *connection,
         int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
         MHD_destroy_response(response);
         printf("Debug: User added successfully\n");
+        char log_msg[BUFFER_SIZE];
+        snprintf(log_msg, sizeof(log_msg), "User %.100s registered as rest", username);
+        log_message(log_msg);
         return ret;
     } else {
         const char *response_msg = "username already exists";
@@ -342,16 +370,24 @@ static int add_user(void *cls, struct MHD_Connection *connection,
 }
 
 
-static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
+    static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
     if (NULL == *con_cls) return;
     struct ConnectionInfo *con_info = *con_cls;
     if (NULL != con_info->pp) {
         MHD_destroy_post_processor(con_info->pp);
     }
+
+    char log_msg[BUFFER_SIZE];
+    snprintf(log_msg, sizeof(log_msg), "User %.100s disconnected", con_info->username);
+    log_message(log_msg);
+
     free(con_info);
     *con_cls = NULL;
     printf("Debug: Request completed and resources freed\n");
-}
+    }
+
+
+
 
 void cleanup_resources() {
     if (unlink(UNIX_SOCKET_PATH) == -1 && errno != ENOENT) {
