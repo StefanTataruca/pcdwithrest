@@ -11,41 +11,101 @@
 #define SOCKET_PATH "/tmp/admin_socket"
 #define BUFFER_SIZE 256
 
+void display_menu() {
+    printf("Admin Menu:\n");
+    printf("1. View connected users\n");
+    printf("2. View logs\n");
+    printf("3. Block user\n");
+    printf("4. Delete file (XML/JSON)\n");
+    printf("5. Logout\n");
+    printf("Enter your choice: ");
+}
+
+void handle_menu(int sockfd) {
+    char choice[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE];
+    char username[BUFFER_SIZE / 2];
+
+    while (1) {
+        display_menu();
+        fgets(choice, sizeof(choice), stdin);
+        choice[strcspn(choice, "\n")] = 0;
+
+        if (strcmp(choice, "1") == 0) {
+            snprintf(buffer, sizeof(buffer), "VIEW_USERS");
+        } else if (strcmp(choice, "2") == 0) {
+            snprintf(buffer, sizeof(buffer), "VIEW_LOGS");
+        } else if (strcmp(choice, "3") == 0) {
+            printf("Enter username to block: ");
+            fgets(username, sizeof(username), stdin);
+            username[strcspn(username, "\n")] = 0;
+            snprintf(buffer, sizeof(buffer), "BLOCK_USER %s", username);
+        } else if (strcmp(choice, "4") == 0) {
+            printf("Enter filename to delete: ");
+            fgets(username, sizeof(username), stdin);
+            username[strcspn(username, "\n")] = 0;
+            snprintf(buffer, sizeof(buffer), "DELETE_FILE %s", username);
+        } else if (strcmp(choice, "5") == 0) {
+            snprintf(buffer, sizeof(buffer), "LOGOUT");
+            send(sockfd, buffer, strlen(buffer), 0);
+            break;
+        } else {
+            printf("Invalid choice. Please try again.\n");
+            continue;
+        }
+
+        send(sockfd, buffer, strlen(buffer), 0);
+        memset(buffer, 0, sizeof(buffer));
+        recv(sockfd, buffer, sizeof(buffer), 0);
+        printf("%s\n", buffer);
+    }
+}
+
 int main() {
     int sockfd;
     struct sockaddr_un addr;
     char buffer[BUFFER_SIZE];
     char username[BUFFER_SIZE / 2], password[BUFFER_SIZE / 2];
 
-    if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        perror("socket error");
-        exit(EXIT_FAILURE);
+    while (1) {
+        if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+            perror("socket error");
+            exit(EXIT_FAILURE);
+        }
+
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+
+        if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+            perror("connect error");
+            exit(EXIT_FAILURE);
+        }
+
+        printf("Username: ");
+        fgets(username, sizeof(username), stdin);
+        username[strcspn(username, "\n")] = 0;
+
+        printf("Password: ");
+        fgets(password, sizeof(password), stdin);
+        password[strcspn(password, "\n")] = 0;
+
+        snprintf(buffer, sizeof(buffer), "LOGIN %.100s %.100s", username, password);
+        send(sockfd, buffer, strlen(buffer), 0);
+
+        memset(buffer, 0, sizeof(buffer));
+        recv(sockfd, buffer, sizeof(buffer), 0);
+        printf("%s\n", buffer);
+
+        if (strcmp(buffer, "Login successful") == 0) {
+            handle_menu(sockfd);
+            break;
+        } else {
+            printf("Login failed. Try again.\n");
+        }
+
+        close(sockfd);
     }
 
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
-
-    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        perror("connect error");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Username: ");
-    fgets(username, sizeof(username), stdin);
-    username[strcspn(username, "\n")] = 0;
-
-    printf("Password: ");
-    fgets(password, sizeof(password), stdin);
-    password[strcspn(password, "\n")] = 0;
-
-snprintf(buffer, sizeof(buffer), "LOGIN %.100s %.100s", username, password);
-    send(sockfd, buffer, strlen(buffer), 0);
-    
-    memset(buffer, 0, sizeof(buffer));
-    recv(sockfd, buffer, sizeof(buffer), 0);
-    printf("%s\n", buffer);
-
-    close(sockfd);
     return 0;
 }

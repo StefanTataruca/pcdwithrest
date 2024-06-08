@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "lxml.h": "c"
+        "lxml.h": "c",
+        "pthread.h": "c"
     }
 }
