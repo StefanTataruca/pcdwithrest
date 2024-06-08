@@ -38,6 +38,7 @@ struct UploadInfo {
     size_t buffer_size;
     FILE *fp;
 };
+
 static void log_message(const char *message) {
     FILE *log_file = fopen("server.log", "a");
     if (log_file == NULL) {
@@ -52,6 +53,8 @@ static void log_message(const char *message) {
             t->tm_hour, t->tm_min, t->tm_sec, message);
     fclose(log_file);
 }
+
+
 static void add_cors_headers(struct MHD_Response *response) {
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -61,6 +64,9 @@ static void add_cors_headers(struct MHD_Response *response) {
 static int upload_xml(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
                       const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
     struct UploadInfo *upload_info = *con_cls;
+    const char *username = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "username");
+    const char *client_type = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "client");
+
     if (NULL == upload_info) {
         upload_info = malloc(sizeof(struct UploadInfo));
         if (NULL == upload_info)
@@ -72,6 +78,8 @@ static int upload_xml(void *cls, struct MHD_Connection *connection, const char *
             return MHD_NO;
         }
         *con_cls = upload_info;
+        
+        
         return MHD_YES;
     }
 
@@ -105,6 +113,9 @@ static int upload_xml(void *cls, struct MHD_Connection *connection, const char *
 static int download_json(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
                          const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
     FILE *fp = fopen("converted.json", "rb");
+    const char *username = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "username");
+    const char *client_type = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "client");
+
     if (!fp) {
         return MHD_NO;
     }
@@ -178,9 +189,15 @@ void handle_client(int client_fd, int is_unix_socket) {
                     log_message(log_msg);
                 } else {
                     snprintf(buffer, sizeof(buffer), "Access denied");
+                    char log_msg[BUFFER_SIZE];
+                    snprintf(log_msg, sizeof(log_msg), "Access denied for user %.100s", username);
+                    log_message(log_msg);
                 }
             } else {
                 snprintf(buffer, sizeof(buffer), "Login failed");
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "Login failed for user %.100s", username);
+                log_message(log_msg);
             }
             printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
@@ -197,6 +214,9 @@ void handle_client(int client_fd, int is_unix_socket) {
                 log_message(log_msg);
             } else {
                 snprintf(buffer, sizeof(buffer), "Username already exists");
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "Registration failed for user %.100s: username already exists", username);
+                log_message(log_msg);
             }
             printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
@@ -209,8 +229,6 @@ void handle_client(int client_fd, int is_unix_socket) {
     }
     close(client_fd);
 }
-
-
 
 struct ConnectionInfo {
     struct MHD_PostProcessor *pp;
@@ -259,6 +277,9 @@ static int check_user(void *cls, struct MHD_Connection *connection,
             send_cors_headers(connection, response);
             int ret = MHD_queue_response(connection, MHD_HTTP_FORBIDDEN, response);
             MHD_destroy_response(response);
+            char log_msg[BUFFER_SIZE];
+            snprintf(log_msg, sizeof(log_msg), "Access denied for user %.100s", username);
+            log_message(log_msg);
             return ret;
         } else {
             const char *response_msg = "user exists";
@@ -267,7 +288,7 @@ static int check_user(void *cls, struct MHD_Connection *connection,
             int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
             char log_msg[BUFFER_SIZE];
-            snprintf(log_msg, sizeof(log_msg), "User %s logged in as rest", username);
+            snprintf(log_msg, sizeof(log_msg), "User %.100s logged in as rest", username);
             log_message(log_msg);
             return ret;
         }
@@ -277,6 +298,9 @@ static int check_user(void *cls, struct MHD_Connection *connection,
         send_cors_headers(connection, response);
         int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
         MHD_destroy_response(response);
+        char log_msg[BUFFER_SIZE];
+        snprintf(log_msg, sizeof(log_msg), "Login failed for user %.100s", username);
+        log_message(log_msg);
         return ret;
     }
 }
@@ -365,12 +389,14 @@ static int add_user(void *cls, struct MHD_Connection *connection,
         int ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
         MHD_destroy_response(response);
         printf("Debug: Username already exists\n");
+        char log_msg[BUFFER_SIZE];
+        snprintf(log_msg, sizeof(log_msg), "Registration failed for user %.100s: username already exists", username);
+        log_message(log_msg);
         return ret;
     }
 }
 
-
-    static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
+static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
     if (NULL == *con_cls) return;
     struct ConnectionInfo *con_info = *con_cls;
     if (NULL != con_info->pp) {
@@ -384,10 +410,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
     free(con_info);
     *con_cls = NULL;
     printf("Debug: Request completed and resources freed\n");
-    }
-
-
-
+}
 
 void cleanup_resources() {
     if (unlink(UNIX_SOCKET_PATH) == -1 && errno != ENOENT) {
@@ -420,6 +443,21 @@ int main() {
     signal(SIGTERM, handle_signal);
 
     db_init();
+
+    // Ensure server.log and users.log files exist
+    FILE *log_file = fopen("server.log", "a");
+    if (log_file == NULL) {
+        perror("Failed to create log file");
+        exit(1);
+    }
+    fclose(log_file);
+
+    FILE *user_log_file = fopen("users.log", "a");
+    if (user_log_file == NULL) {
+        perror("Failed to create user log file");
+        exit(1);
+    }
+    fclose(user_log_file);
 
     if ((unix_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
         perror("socket error");
@@ -466,6 +504,7 @@ int main() {
     if (NULL == daemon) return 1;
 
     printf("Server is running...\n");
+    log_message("Server is running...");
 
     sleep(1);
 
