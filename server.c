@@ -126,6 +126,8 @@ static int download_json(void *cls, struct MHD_Connection *connection, const cha
     return ret;
 }
 
+
+
 static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
                                 const char *method, const char *version, const char *upload_data,
                                 size_t *upload_data_size, void **con_cls) {
@@ -143,6 +145,7 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
 
     return MHD_NO;
 }
+
 
 void trim_whitespace(char *str) {
     char *end;

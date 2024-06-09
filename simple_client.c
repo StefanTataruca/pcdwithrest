@@ -109,7 +109,8 @@ void register_user() {
 }
 
 void upload_xml(int socket_fd) {
-    char buffer[BUFFER_SIZE], response[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE];
+    char response[BUFFER_SIZE];
     char file_path[BUFFER_SIZE];
     FILE *file;
     struct stat st;
@@ -134,7 +135,16 @@ void upload_xml(int socket_fd) {
         return;
     }
 
-    snprintf(buffer, BUFFER_SIZE, "UPLOAD_XML %s", file_path);
+    // Calculăm dimensiunea buffer-ului necesar pentru a evita trunchierea
+    size_t needed_size = snprintf(NULL, 0, "UPLOAD_XML %s", file_path) + 1;
+    if (needed_size > sizeof(buffer)) {
+        fprintf(stderr, "File path is too long\n");
+        fclose(file);
+        return;
+    }
+
+    snprintf(buffer, needed_size, "UPLOAD_XML %s", file_path);
+
     write(socket_fd, buffer, strlen(buffer));
     memset(buffer, 0, BUFFER_SIZE);
 
@@ -186,8 +196,8 @@ int main() {
     char choice[BUFFER_SIZE];
     int socket_fd = -1;
 
-    show_action_menu();
     while (1) {
+        show_action_menu();
         printf("Enter choice: ");
         fgets(choice, BUFFER_SIZE, stdin);
         choice[strcspn(choice, "\n")] = 0;
