@@ -4,7 +4,8 @@
 #include "rest_client.h"
 #include "db.h"
 #include <sqlite3.h>
-#define BUFFER_SIZE 1024
+
+#define BUFFER_SIZE 256 // Use the same buffer size
 
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
@@ -42,7 +43,7 @@ void make_rest_request(const char *url, char *response, const char *username, co
 }
 
 int rest_check_user(const char *username, const char *password) {
-    char response[1024] = {0};
+    char response[BUFFER_SIZE] = {0};
     char url[256];
     snprintf(url, sizeof(url), "http://localhost:8888/check_user?username=%s&password=%s", username, password);
     make_rest_request(url, response, NULL, NULL);
@@ -57,7 +58,7 @@ int rest_check_user(const char *username, const char *password) {
 }
 
 void rest_add_user(const char *username, const char *password) {
-    char response[1024] = {0};
+    char response[BUFFER_SIZE] = {0};
     char url[256];
     snprintf(url, sizeof(url), "http://localhost:8888/add_user");
     make_rest_request(url, response, username, password);
@@ -70,7 +71,7 @@ int rest_login(const char *username, const char *password) {
 
 int rest_register(const char *username, const char *password) {
     // Send a request to the server to check if the user exists
-    char response[1024] = {0};
+    char response[BUFFER_SIZE] = {0};
     char url[256];
     snprintf(url, sizeof(url), "http://localhost:8888/check_user?username=%s", username);
     make_rest_request(url, response, NULL, NULL);

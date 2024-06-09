@@ -1,10 +1,46 @@
-#ifndef REST_CLIENT_H
-#define REST_CLIENT_H
+#ifndef REST_HANDLERS_H
+#define REST_HANDLERS_H
 
-void make_rest_request(const char *url, char *response, const char *username, const char *password);
-int rest_check_user(const char *username, const char *password);
-void rest_add_user(const char *username, const char *password);
-int rest_login(const char *username, const char *password);
-int rest_register(const char *username, const char *password);
+#include <microhttpd.h>
 
-#endif // REST_CLIENT_H
+#define BUFFER_SIZE 256
+#define UPLOAD_BUFFER_SIZE 1024
+
+struct UploadInfo {
+    char buffer[UPLOAD_BUFFER_SIZE];
+    size_t buffer_size;
+    FILE *fp;
+};
+
+struct ConnectionInfo {
+    struct MHD_PostProcessor *pp;
+    char username[BUFFER_SIZE];
+    char password[BUFFER_SIZE];
+};
+
+static void add_cors_headers(struct MHD_Response *response);
+
+static int upload_xml_rest(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
+                           const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
+
+static int download_json_rest(void *cls, struct MHD_Connection *connection, const char *url, const char *method,
+                              const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
+
+static int check_user_rest(void *cls, struct MHD_Connection *connection,
+                           const char *url, const char *method, const char *version,
+                           const char *upload_data, size_t *upload_data_size, void **con_cls);
+
+static int add_user_rest(void *cls, struct MHD_Connection *connection,
+                         const char *url, const char *method, const char *version,
+                         const char *upload_data, size_t *upload_data_size, void **con_cls);
+
+static int iterate_post(void *coninfo_cls, enum MHD_ValueKind kind, const char *key, const char *filename,
+                        const char *content_type, const char *transfer_encoding, const char *data, uint64_t off, size_t size);
+
+static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
+
+static void log_message(const char *message);
+
+static void trim_whitespace(char *str);
+
+#endif // REST_HANDLERS_H

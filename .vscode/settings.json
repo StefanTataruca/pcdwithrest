@@ -1,6 +1,11 @@
 {
     "files.associations": {
         "lxml.h": "c",
-        "pthread.h": "c"
+        "pthread.h": "c",
+        "ctype.h": "c",
+        "json.h": "c",
+        "rest_handlers.h": "c",
+        "microhttpd.h": "c",
+        "stdlib.h": "c"
     }
 }

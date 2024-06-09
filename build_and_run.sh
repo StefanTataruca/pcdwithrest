@@ -5,7 +5,7 @@ fuser -k 12345/tcp
 fuser -k 8888/tcp
 
 # Compile server
-gcc -o server server.c db.c rest_client.c -lmicrohttpd -lsqlite3 -lpthread -lcurl -lcjson
+gcc -o server server.c db.c rest_client.c rest_handlers.c -lmicrohttpd -lsqlite3 -lpthread -lcurl -lcjson
 if [ $? -ne 0 ]; then
     echo "Error compiling server"
     exit 1
