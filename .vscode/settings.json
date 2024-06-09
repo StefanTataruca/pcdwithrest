@@ -6,6 +6,7 @@
         "json.h": "c",
         "rest_handlers.h": "c",
         "microhttpd.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "un.h": "c"
     }
 }

@@ -15,6 +15,7 @@
 #include "db.h"
 #include "rest_handlers.h"
 
+#define MAX_USERS 100
 #define UNIX_SOCKET_PATH "/tmp/admin_socket"
 #define INET_PORT 12345
 #define REST_PORT 8888
@@ -24,6 +25,17 @@
 void *handle_client(void *arg);
 void cleanup_resources();
 void handle_signal(int signal);
+
+typedef struct {
+    char username[BUFFER_SIZE];
+    int socket_fd;
+    int is_blocked; // Adaugă acest câmp
+} User;
+
+User connected_users[MAX_USERS];
+int num_connected_users = 0;
+
+pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
                                 const char *method, const char *version, const char *upload_data,
@@ -44,15 +56,85 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
 }
 
 
+void add_user(const char *username, int socket_fd) {
+    pthread_mutex_lock(&users_mutex);
+    if (num_connected_users < MAX_USERS) {
+        strcpy(connected_users[num_connected_users].username, username);
+        connected_users[num_connected_users].socket_fd = socket_fd;
+        num_connected_users++;
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
+void remove_user(int socket_fd) {
+    pthread_mutex_lock(&users_mutex);
+    for (int i = 0; i < num_connected_users; i++) {
+        if (connected_users[i].socket_fd == socket_fd) {
+            connected_users[i] = connected_users[num_connected_users - 1];
+            num_connected_users--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
+void view_connected_users(char *buffer) {
+    pthread_mutex_lock(&users_mutex);
+    snprintf(buffer, BUFFER_SIZE, "Connected users:\n");
+    for (int i = 0; i < num_connected_users; i++) {
+        strncat(buffer, connected_users[i].username, BUFFER_SIZE - strlen(buffer) - 1);
+        strncat(buffer, "\n", BUFFER_SIZE - strlen(buffer) - 1);
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
+void view_logs(char *buffer) {
+    FILE *log_file = fopen("server.log", "r");
+    if (log_file) {
+        size_t len = fread(buffer, 1, BUFFER_SIZE - 1, log_file);
+        buffer[len] = '\0';
+        fclose(log_file);
+    } else {
+        snprintf(buffer, BUFFER_SIZE, "Failed to read logs");
+    }
+}
+
+int delete_file(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if (dot && (strcmp(dot, ".json") == 0 || strcmp(dot, ".xml") == 0)) {
+        return remove(filename) == 0;
+    }
+    return 0;
+}
+
+void disconnect_user(const char *username) {
+    pthread_mutex_lock(&users_mutex);
+    for (int i = 0; i < num_connected_users; i++) {
+        if (strcmp(connected_users[i].username, username) == 0) {
+            close(connected_users[i].socket_fd);
+            connected_users[i] = connected_users[num_connected_users - 1];
+            num_connected_users--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
 void *handle_client(void *arg) {
     int client_fd = *((int *)arg);
     int is_unix_socket = *((int *)(arg + sizeof(int)));
     free(arg);
 
     char buffer[BUFFER_SIZE];
-    memset(buffer, 0, BUFFER_SIZE); 
+    memset(buffer, 0, BUFFER_SIZE);
 
-    while (read(client_fd, buffer, BUFFER_SIZE) > 0) {
+    while (1) {
+        ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE - 1);
+        if (bytes_read <= 0) {
+            break;
+        }
+        buffer[bytes_read] = '\0';
+
         printf("Debug: Received raw data: %s\n", buffer);
         char command[BUFFER_SIZE], username[BUFFER_SIZE], password[BUFFER_SIZE];
         int role;
@@ -60,12 +142,11 @@ void *handle_client(void *arg) {
         trim_whitespace(username);
         trim_whitespace(password);
 
-        printf("Debug: Processed command: %s, username: %s, password: %s\n", command, username, password);
-
         if (strcmp(command, "LOGIN") == 0) {
             if (db_check_user(username, password, &role)) {
                 if ((is_unix_socket && role == 1) || (!is_unix_socket && role == 0)) {
                     snprintf(buffer, sizeof(buffer), "Login successful");
+                    add_user(username, client_fd);
                     char log_msg[BUFFER_SIZE];
                     snprintf(log_msg, sizeof(log_msg), "User %.100s logged in as %s", username, is_unix_socket ? "admin" : "simple");
                     log_message(log_msg);
@@ -75,12 +156,7 @@ void *handle_client(void *arg) {
             } else {
                 snprintf(buffer, sizeof(buffer), "Login failed");
             }
-            printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
-            memset(username, 0, BUFFER_SIZE);
-            memset(password, 0, BUFFER_SIZE);
-            memset(buffer, 0, BUFFER_SIZE); 
-            break;
         } else if (strcmp(command, "REGISTER") == 0) {
             if (!db_user_exists(username)) {
                 db_add_user(username, password);
@@ -91,20 +167,67 @@ void *handle_client(void *arg) {
             } else {
                 snprintf(buffer, sizeof(buffer), "Username already exists");
             }
-            printf("Debug: Sending response: %s\n", buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
-            memset(username, 0, BUFFER_SIZE);
-            memset(password, 0, BUFFER_SIZE);
-            memset(buffer, 0, BUFFER_SIZE);  
+        } else if (strcmp(command, "VIEW_USERS") == 0) {
+            view_connected_users(buffer);
+            write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "VIEW_LOGS") == 0) {
+            view_logs(buffer);
+            write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "BLOCK_USER") == 0) {
+            char target_username[BUFFER_SIZE];
+            sscanf(buffer + strlen("BLOCK_USER "), "%s", target_username);
+            int result = db_block_user(target_username);
+            if (result == 1) {
+                snprintf(buffer, sizeof(buffer), "User %.100s blocked successfully", target_username);
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "User %.100s blocked", target_username);
+                log_message(log_msg);
+                disconnect_user(target_username);
+            } else if (result == -1) {
+                snprintf(buffer, sizeof(buffer), "User %.100s is already blocked", target_username);
+            } else {
+                snprintf(buffer, sizeof(buffer), "Failed to block user %.100s", target_username);
+            }
+            write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "UNBLOCK_USER") == 0) {
+            char target_username[BUFFER_SIZE];
+            sscanf(buffer + strlen("UNBLOCK_USER "), "%s", target_username);
+            int result = db_unblock_user(target_username);
+            if (result == 1) {
+                snprintf(buffer, sizeof(buffer), "User %.100s unblocked successfully", target_username);
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "User %.100s unblocked", target_username);
+                log_message(log_msg);
+            } else if (result == -1) {
+                snprintf(buffer, sizeof(buffer), "User %.100s is already unblocked", target_username);
+            } else {
+                snprintf(buffer, sizeof(buffer), "Failed to unblock user %.100s", target_username);
+            }
+            write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "DELETE_FILE") == 0) {
+            char filename[BUFFER_SIZE];
+            sscanf(buffer + strlen("DELETE_FILE "), "%s", filename);
+            if (delete_file(filename)) {
+                snprintf(buffer, sizeof(buffer), "File %.100s deleted successfully", filename);
+                char log_msg[BUFFER_SIZE];
+                snprintf(log_msg, sizeof(log_msg), "File %.100s deleted", filename);
+                log_message(log_msg);
+            } else {
+                snprintf(buffer, sizeof(buffer), "Failed to delete file %.100s", filename);
+            }
+            write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "LOGOUT") == 0) {
+            snprintf(buffer, sizeof(buffer), "Logged out successfully");
+            write(client_fd, buffer, strlen(buffer) + 1);
+            remove_user(client_fd);
             break;
         }
-        memset(buffer, 0, BUFFER_SIZE);  
+        memset(buffer, 0, BUFFER_SIZE);
     }
     close(client_fd);
     return NULL;
 }
-
-
 void cleanup_resources() {
     if (unlink(UNIX_SOCKET_PATH) == -1 && errno != ENOENT) {
         perror("Failed to unlink UNIX socket");

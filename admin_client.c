@@ -16,8 +16,9 @@ void display_menu() {
     printf("1. View connected users\n");
     printf("2. View logs\n");
     printf("3. Block user\n");
-    printf("4. Delete file (XML/JSON)\n");
-    printf("5. Logout\n");
+    printf("4. Unblock user\n");
+    printf("5. Delete file (XML/JSON)\n");
+    printf("6. Logout\n");
     printf("Enter your choice: ");
 }
 
@@ -25,6 +26,7 @@ void handle_menu(int sockfd) {
     char choice[BUFFER_SIZE];
     char buffer[BUFFER_SIZE];
     char username[BUFFER_SIZE / 2];
+    char filename[BUFFER_SIZE];
 
     while (1) {
         display_menu();
@@ -33,19 +35,39 @@ void handle_menu(int sockfd) {
 
         if (strcmp(choice, "1") == 0) {
             snprintf(buffer, sizeof(buffer), "VIEW_USERS");
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
         } else if (strcmp(choice, "2") == 0) {
             snprintf(buffer, sizeof(buffer), "VIEW_LOGS");
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
         } else if (strcmp(choice, "3") == 0) {
             printf("Enter username to block: ");
             fgets(username, sizeof(username), stdin);
             username[strcspn(username, "\n")] = 0;
-            snprintf(buffer, sizeof(buffer), "BLOCK_USER %s", username);
+            snprintf(buffer, sizeof(buffer), "BLOCK_USER %.100s", username);
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
         } else if (strcmp(choice, "4") == 0) {
-            printf("Enter filename to delete: ");
+            printf("Enter username to unblock: ");
             fgets(username, sizeof(username), stdin);
             username[strcspn(username, "\n")] = 0;
-            snprintf(buffer, sizeof(buffer), "DELETE_FILE %s", username);
+            snprintf(buffer, sizeof(buffer), "UNBLOCK_USER %.100s", username);
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
         } else if (strcmp(choice, "5") == 0) {
+            printf("Enter filename to delete: ");
+            fgets(filename, sizeof(filename), stdin);
+            filename[strcspn(filename, "\n")] = 0;
+            snprintf(buffer, sizeof(buffer), "DELETE_FILE %.100s", filename);
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
+        } else if (strcmp(choice, "6") == 0) {
             snprintf(buffer, sizeof(buffer), "LOGOUT");
             send(sockfd, buffer, strlen(buffer), 0);
             break;
@@ -53,13 +75,9 @@ void handle_menu(int sockfd) {
             printf("Invalid choice. Please try again.\n");
             continue;
         }
-
-        send(sockfd, buffer, strlen(buffer), 0);
-        memset(buffer, 0, sizeof(buffer));
-        recv(sockfd, buffer, sizeof(buffer), 0);
-        printf("%s\n", buffer);
     }
 }
+
 
 int main() {
     int sockfd;
