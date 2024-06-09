@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <time.h>
+#include <pthread.h>
 #include "db.h"
 #include "lxml.h"
 #include "json.h"
@@ -29,7 +30,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
 #define BUFFER_SIZE 256
 #define UPLOAD_BUFFER_SIZE 1024
 
-void handle_client(int client_fd, int is_unix_socket);
+void *handle_client(void *arg);
 void cleanup_resources();
 void handle_signal(int signal);
 
@@ -155,7 +156,11 @@ void trim_whitespace(char *str) {
     *(end + 1) = '\0';
 }
 
-void handle_client(int client_fd, int is_unix_socket) {
+void *handle_client(void *arg) {
+    int client_fd = *((int *)arg);
+    int is_unix_socket = *((int *)(arg + sizeof(int)));
+    free(arg);
+
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, BUFFER_SIZE); 
 
@@ -208,9 +213,8 @@ void handle_client(int client_fd, int is_unix_socket) {
         memset(buffer, 0, BUFFER_SIZE);  
     }
     close(client_fd);
+    return NULL;
 }
-
-
 
 struct ConnectionInfo {
     struct MHD_PostProcessor *pp;
@@ -370,7 +374,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
 }
 
 
-    static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
+static void request_completed_callback(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe) {
     if (NULL == *con_cls) return;
     struct ConnectionInfo *con_info = *con_cls;
     if (NULL != con_info->pp) {
@@ -384,10 +388,7 @@ static int add_user(void *cls, struct MHD_Connection *connection,
     free(con_info);
     *con_cls = NULL;
     printf("Debug: Request completed and resources freed\n");
-    }
-
-
-
+}
 
 void cleanup_resources() {
     if (unlink(UNIX_SOCKET_PATH) == -1 && errno != ENOENT) {
@@ -485,7 +486,18 @@ int main() {
                 perror("accept error");
                 exit(-1);
             }
-            handle_client(client_fd, 1);
+
+            int *arg = malloc(2 * sizeof(int));
+            arg[0] = client_fd;
+            arg[1] = 1;
+            pthread_t thread;
+            if (pthread_create(&thread, NULL, handle_client, arg) != 0) {
+                perror("Failed to create thread");
+                close(client_fd);
+                free(arg);
+            } else {
+                pthread_detach(thread);
+            }
         }
 
         if (FD_ISSET(inet_socket_fd, &read_fds)) {
@@ -493,7 +505,18 @@ int main() {
                 perror("accept error");
                 exit(-1);
             }
-            handle_client(client_fd, 0);
+
+            int *arg = malloc(2 * sizeof(int));
+            arg[0] = client_fd;
+            arg[1] = 0;
+            pthread_t thread;
+            if (pthread_create(&thread, NULL, handle_client, arg) != 0) {
+                perror("Failed to create thread");
+                close(client_fd);
+                free(arg);
+            } else {
+                pthread_detach(thread);
+            }
         }
     }
 
