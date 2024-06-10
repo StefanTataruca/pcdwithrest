@@ -5,10 +5,22 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <sys/stat.h>
-
+#include <libgen.h>
+#include <pthread.h> // Adaugă include-ul pentru pthread
+#include <stdint.h>
 #define SERVER_PORT 12345
 #define SERVER_IP "127.0.0.1"
 #define BUFFER_SIZE 256
+
+void trim_whitespace(char *str);
+int is_xml_file(const char *filename);
+void show_action_menu();
+int connect_to_server();
+void login(int socket_fd);
+void register_user();
+void upload_xml(int socket_fd);
+void download_json(int socket_fd, const char *download_path);
+void listen_for_messages(int socket_fd);
 
 void trim_whitespace(char *str) {
     char *end;
@@ -112,6 +124,7 @@ void upload_xml(int socket_fd) {
     char buffer[BUFFER_SIZE];
     char response[BUFFER_SIZE];
     char file_path[BUFFER_SIZE];
+    char download_path[BUFFER_SIZE];
     FILE *file;
     struct stat st;
 
@@ -135,15 +148,7 @@ void upload_xml(int socket_fd) {
         return;
     }
 
-    // Calculăm dimensiunea buffer-ului necesar pentru a evita trunchierea
-    size_t needed_size = snprintf(NULL, 0, "UPLOAD_XML %s", file_path) + 1;
-    if (needed_size > sizeof(buffer)) {
-        fprintf(stderr, "File path is too long\n");
-        fclose(file);
-        return;
-    }
-
-    snprintf(buffer, needed_size, "UPLOAD_XML %s", file_path);
+    snprintf(buffer, sizeof(buffer), "UPLOAD_XML %.200s", file_path); // Limitează dimensiunea datelor
 
     write(socket_fd, buffer, strlen(buffer));
     memset(buffer, 0, BUFFER_SIZE);
@@ -156,9 +161,26 @@ void upload_xml(int socket_fd) {
     fclose(file);
     read(socket_fd, response, BUFFER_SIZE);
     printf("%s\n", response);
+
+    if (strcmp(response, "File uploaded and converted successfully.") == 0) {
+        printf("Enter the path where you want to save the downloaded JSON file: ");
+        fgets(download_path, sizeof(download_path), stdin);
+        trim_whitespace(download_path);
+
+        snprintf(buffer, sizeof(buffer), "DOWNLOAD_JSON %.200s", download_path); // Limitează dimensiunea datelor
+        write(socket_fd, buffer, strlen(buffer));
+        memset(buffer, 0, BUFFER_SIZE);
+
+        read(socket_fd, response, BUFFER_SIZE);
+        if (strcmp(response, "DOWNLOAD_READY") == 0) {
+            download_json(socket_fd, download_path);
+        } else {
+            printf("Failed to download JSON file.\n");
+        }
+    }
 }
 
-void download_json(int socket_fd) {
+void download_json(int socket_fd, const char *download_path) {
     char buffer[BUFFER_SIZE];
     char file_path[BUFFER_SIZE];
     FILE *file;
@@ -173,9 +195,7 @@ void download_json(int socket_fd) {
         return;
     }
 
-    printf("Enter the path to save the downloaded JSON file: ");
-    fgets(file_path, sizeof(file_path), stdin);
-    trim_whitespace(file_path);
+    snprintf(file_path, sizeof(file_path), "%s/converted.json", download_path);
 
     file = fopen(file_path, "wb");
     if (!file) {
@@ -189,12 +209,35 @@ void download_json(int socket_fd) {
     }
 
     fclose(file);
-    printf("File downloaded successfully.\n");
+    printf("File downloaded successfully to %s.\n", file_path);
+}
+
+void listen_for_messages(int socket_fd) {
+    char buffer[BUFFER_SIZE];
+    while (1) {
+        memset(buffer, 0, BUFFER_SIZE);
+        ssize_t bytes_read = read(socket_fd, buffer, BUFFER_SIZE - 1);
+        if (bytes_read <= 0) {
+            printf("Connection closed by server.\n");
+            close(socket_fd);
+            exit(0);
+        }
+        buffer[bytes_read] = '\0';
+
+        if (strcmp(buffer, "DISCONNECT") == 0) {
+            printf("You have been disconnected by the server.\n");
+            close(socket_fd);
+            exit(0);
+        }
+
+        // Handle other messages from server if needed
+    }
 }
 
 int main() {
     char choice[BUFFER_SIZE];
     int socket_fd = -1;
+    pthread_t listener_thread;
 
     while (1) {
         show_action_menu();
@@ -205,15 +248,24 @@ int main() {
         if (strcmp(choice, "1") == 0) {
             if (socket_fd != -1) close(socket_fd);
             socket_fd = connect_to_server();
-            if (socket_fd != -1) login(socket_fd);
+            if (socket_fd != -1) {
+                login(socket_fd);
+                pthread_create(&listener_thread, NULL, (void *(*)(void *))listen_for_messages, (void *)(intptr_t)socket_fd);
+                pthread_detach(listener_thread);
+            }
         } else if (strcmp(choice, "2") == 0) {
             register_user();
         } else if (strcmp(choice, "3") == 0) {
             if (socket_fd != -1) upload_xml(socket_fd);
             else printf("You need to login first.\n");
         } else if (strcmp(choice, "4") == 0) {
-            if (socket_fd != -1) download_json(socket_fd);
-            else printf("You need to login first.\n");
+            if (socket_fd != -1) {
+                printf("Enter the path where you want to save the downloaded JSON file: ");
+                char download_path[BUFFER_SIZE];
+                fgets(download_path, sizeof(download_path), stdin);
+                trim_whitespace(download_path);
+                download_json(socket_fd, download_path);
+            } else printf("You need to login first.\n");
         } else if (strcmp(choice, "5") == 0) {
             if (socket_fd != -1) close(socket_fd);
             exit(0);

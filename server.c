@@ -13,6 +13,7 @@
 #include <time.h>
 #include <pthread.h>
 #include "db.h"
+#include "conversion.h" // Include pentru funcțiile de conversie
 #include "rest_handlers.h"
 
 #define MAX_USERS 100
@@ -20,7 +21,6 @@
 #define INET_PORT 12345
 #define REST_PORT 8888
 #define BUFFER_SIZE 256
-#define UPLOAD_BUFFER_SIZE 1024
 
 void *handle_client(void *arg);
 void cleanup_resources();
@@ -29,7 +29,6 @@ void handle_signal(int signal);
 typedef struct {
     char username[BUFFER_SIZE];
     int socket_fd;
-    int is_blocked; // Adaugă acest câmp
 } User;
 
 User connected_users[MAX_USERS];
@@ -55,6 +54,118 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
     return MHD_NO;
 }
 
+void handle_upload(int client_fd, const char *file_path) {
+    char buffer[BUFFER_SIZE];
+    FILE *file;
+    ssize_t bytes_read;
+
+    file = fopen(file_path, "wb");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+
+    while ((bytes_read = read(client_fd, buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, bytes_read, file);
+    }
+
+    fclose(file);
+
+    convert_xml_to_json(file_path, "converted.json");
+
+    snprintf(buffer, sizeof(buffer), "File uploaded and converted successfully.\n");
+    write(client_fd, buffer, strlen(buffer));
+}
+
+void handle_download(int client_fd, const char *download_path) {
+    char buffer[BUFFER_SIZE];
+    char file_path[BUFFER_SIZE];
+    FILE *file;
+    ssize_t bytes_read;
+
+    file = fopen("converted.json", "rb");
+    if (!file) {
+        perror("Failed to open file");
+        snprintf(buffer, sizeof(buffer), "Failed to open converted JSON file.\n");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    snprintf(file_path, sizeof(file_path), "%s/converted.json", download_path);
+
+    FILE *download_file = fopen(file_path, "wb");
+    if (!download_file) {
+        perror("Failed to open file for writing");
+        snprintf(buffer, sizeof(buffer), "Failed to open file for writing at specified path.\n");
+        write(client_fd, buffer, strlen(buffer));
+        fclose(file);
+        return;
+    }
+
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        fwrite(buffer, 1, bytes_read, download_file);
+    }
+
+    fclose(file);
+    fclose(download_file);
+
+    snprintf(buffer, sizeof(buffer), "File downloaded successfully to %.200s.\n", file_path); // Limitează dimensiunea datelor
+    write(client_fd, buffer, strlen(buffer));
+}
+void disconnect_user(const char *username) {
+    pthread_mutex_lock(&users_mutex);
+    for (int i = 0; i < num_connected_users; i++) {
+        if (strcmp(connected_users[i].username, username) == 0) {
+            close(connected_users[i].socket_fd);
+            connected_users[i] = connected_users[num_connected_users - 1];
+            num_connected_users--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
+void notify_and_disconnect_user(const char *username) {
+    pthread_mutex_lock(&users_mutex);
+    for (int i = 0; i < num_connected_users; i++) {
+        if (strcmp(connected_users[i].username, username) == 0) {
+            const char *message = "DISCONNECT";
+            write(connected_users[i].socket_fd, message, strlen(message) + 1);
+            close(connected_users[i].socket_fd);
+            connected_users[i] = connected_users[num_connected_users - 1];
+            num_connected_users--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&users_mutex);
+}
+
+void handle_block_user(int client_fd, const char *username) {
+    char buffer[BUFFER_SIZE];
+
+    if (db_is_user_blocked(username)) {
+        snprintf(buffer, sizeof(buffer), "User %s is already blocked.", username);
+    } else if (db_block_user(username)) {
+        snprintf(buffer, sizeof(buffer), "User %s blocked successfully.", username);
+        notify_and_disconnect_user(username);  // Deconectează utilizatorul dacă este conectat
+    } else {
+        snprintf(buffer, sizeof(buffer), "Failed to block user %s.", username);
+    }
+    write(client_fd, buffer, strlen(buffer) + 1);  // Asigură-te că trimiți terminatorul null
+}
+
+void handle_unblock_user(int client_fd, const char *username) {
+    char buffer[BUFFER_SIZE];
+
+    if (!db_is_user_blocked(username)) {
+        snprintf(buffer, sizeof(buffer), "User %s is not blocked.", username);
+    } else if (db_unblock_user(username)) {
+        snprintf(buffer, sizeof(buffer), "User %s unblocked successfully.", username);
+    } else {
+        snprintf(buffer, sizeof(buffer), "Failed to unblock user %s.", username);
+    }
+    write(client_fd, buffer, strlen(buffer) + 1);  // Asigură-te că trimiti terminatorul null
+}
 
 void add_user(const char *username, int socket_fd) {
     pthread_mutex_lock(&users_mutex);
@@ -107,26 +218,17 @@ int delete_file(const char *filename) {
     return 0;
 }
 
-void disconnect_user(const char *username) {
-    pthread_mutex_lock(&users_mutex);
-    for (int i = 0; i < num_connected_users; i++) {
-        if (strcmp(connected_users[i].username, username) == 0) {
-            close(connected_users[i].socket_fd);
-            connected_users[i] = connected_users[num_connected_users - 1];
-            num_connected_users--;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&users_mutex);
-}
-
 void *handle_client(void *arg) {
     int client_fd = *((int *)arg);
     int is_unix_socket = *((int *)(arg + sizeof(int)));
     free(arg);
 
     char buffer[BUFFER_SIZE];
+    char file_path[BUFFER_SIZE];
+    char download_path[BUFFER_SIZE];
     memset(buffer, 0, BUFFER_SIZE);
+    memset(file_path, 0, BUFFER_SIZE);
+    memset(download_path, 0, BUFFER_SIZE);
 
     while (1) {
         ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE - 1);
@@ -168,46 +270,27 @@ void *handle_client(void *arg) {
                 snprintf(buffer, sizeof(buffer), "Username already exists");
             }
             write(client_fd, buffer, strlen(buffer) + 1);
+        } else if (strcmp(command, "BLOCK_USER") == 0) {
+            sscanf(buffer + strlen("BLOCK_USER "), "%255s", username);
+            handle_block_user(client_fd, username);
+        } else if (strcmp(command, "UNBLOCK_USER") == 0) {
+            sscanf(buffer + strlen("UNBLOCK_USER "), "%255s", username);
+            handle_unblock_user(client_fd, username);
+        } else if (strcmp(command, "UPLOAD_XML") == 0) {
+            sscanf(buffer + strlen("UPLOAD_XML "), "%255s", file_path); // Extrage file_path
+            handle_upload(client_fd, file_path);
+        } else if (strcmp(command, "DOWNLOAD_JSON") == 0) {
+            sscanf(buffer + strlen("DOWNLOAD_JSON "), "%255s", download_path); // Extrage download_path
+            handle_download(client_fd, download_path);
         } else if (strcmp(command, "VIEW_USERS") == 0) {
             view_connected_users(buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
         } else if (strcmp(command, "VIEW_LOGS") == 0) {
             view_logs(buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
-        } else if (strcmp(command, "BLOCK_USER") == 0) {
-            char target_username[BUFFER_SIZE];
-            sscanf(buffer + strlen("BLOCK_USER "), "%s", target_username);
-            int result = db_block_user(target_username);
-            if (result == 1) {
-                snprintf(buffer, sizeof(buffer), "User %.100s blocked successfully", target_username);
-                char log_msg[BUFFER_SIZE];
-                snprintf(log_msg, sizeof(log_msg), "User %.100s blocked", target_username);
-                log_message(log_msg);
-                disconnect_user(target_username);
-            } else if (result == -1) {
-                snprintf(buffer, sizeof(buffer), "User %.100s is already blocked", target_username);
-            } else {
-                snprintf(buffer, sizeof(buffer), "Failed to block user %.100s", target_username);
-            }
-            write(client_fd, buffer, strlen(buffer) + 1);
-        } else if (strcmp(command, "UNBLOCK_USER") == 0) {
-            char target_username[BUFFER_SIZE];
-            sscanf(buffer + strlen("UNBLOCK_USER "), "%s", target_username);
-            int result = db_unblock_user(target_username);
-            if (result == 1) {
-                snprintf(buffer, sizeof(buffer), "User %.100s unblocked successfully", target_username);
-                char log_msg[BUFFER_SIZE];
-                snprintf(log_msg, sizeof(log_msg), "User %.100s unblocked", target_username);
-                log_message(log_msg);
-            } else if (result == -1) {
-                snprintf(buffer, sizeof(buffer), "User %.100s is already unblocked", target_username);
-            } else {
-                snprintf(buffer, sizeof(buffer), "Failed to unblock user %.100s", target_username);
-            }
-            write(client_fd, buffer, strlen(buffer) + 1);
         } else if (strcmp(command, "DELETE_FILE") == 0) {
             char filename[BUFFER_SIZE];
-            sscanf(buffer + strlen("DELETE_FILE "), "%s", filename);
+            sscanf(buffer + strlen("DELETE_FILE "), "%255s", filename);
             if (delete_file(filename)) {
                 snprintf(buffer, sizeof(buffer), "File %.100s deleted successfully", filename);
                 char log_msg[BUFFER_SIZE];
@@ -228,6 +311,7 @@ void *handle_client(void *arg) {
     close(client_fd);
     return NULL;
 }
+
 void cleanup_resources() {
     if (unlink(UNIX_SOCKET_PATH) == -1 && errno != ENOENT) {
         perror("Failed to unlink UNIX socket");
@@ -338,7 +422,7 @@ int main() {
             }
         }
 
-        if (FD_ISSET(inet_socket_fd, &read_fds)) {
+        if (FD_ISSET(inet_socket_fd, & read_fds)) {
             if ((client_fd = accept(inet_socket_fd, NULL, NULL)) == -1) {
                 perror("accept error");
                 exit(-1);

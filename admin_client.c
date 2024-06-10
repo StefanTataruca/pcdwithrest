@@ -49,6 +49,7 @@ void handle_menu(int sockfd) {
             username[strcspn(username, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "BLOCK_USER %.100s", username);
             send(sockfd, buffer, strlen(buffer), 0);
+            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "4") == 0) {
@@ -57,6 +58,7 @@ void handle_menu(int sockfd) {
             username[strcspn(username, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "UNBLOCK_USER %.100s", username);
             send(sockfd, buffer, strlen(buffer), 0);
+            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "5") == 0) {
@@ -65,6 +67,7 @@ void handle_menu(int sockfd) {
             filename[strcspn(filename, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "DELETE_FILE %.100s", filename);
             send(sockfd, buffer, strlen(buffer), 0);
+            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "6") == 0) {
@@ -77,7 +80,6 @@ void handle_menu(int sockfd) {
         }
     }
 }
-
 
 int main() {
     int sockfd;
