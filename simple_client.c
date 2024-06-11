@@ -16,6 +16,8 @@
 #define SERVER_IP "127.0.0.1"
 #define MAX_FILE_PATH 512
 
+int is_logged_in = 0; // Global variable to track login status
+
 void trim_whitespace(char *str);
 void trim_trailing_slash(char *str);
 int is_xml_file(const char *filename);
@@ -29,12 +31,9 @@ void listen_for_messages(int socket_fd);
 
 void trim_whitespace(char *str) {
     char *end;
-
     while (isspace((unsigned char)*str)) str++;
-
     end = str + strlen(str) - 1;
     while (end > str && isspace((unsigned char)*end)) end--;
-
     *(end + 1) = '\0';
 }
 
@@ -51,11 +50,15 @@ int is_xml_file(const char *filename) {
 }
 
 void show_action_menu() {
-    printf("1. Login\n");
-    printf("2. Register\n");
-    printf("3. Upload XML file\n");
-    printf("4. Download converted JSON file\n");
-    printf("5. Exit\n");
+    if (!is_logged_in) {
+        printf("1. Login\n");
+        printf("2. Register\n");
+        printf("3. Exit\n");
+    } else {
+        printf("1. Upload XML file\n");
+        printf("2. Download converted JSON file\n");
+        printf("3. Exit\n");
+    }
     fflush(stdout);
 }
 
@@ -101,10 +104,11 @@ void login(int socket_fd) {
     read(socket_fd, response, BUFFER_SIZE);
     printf("%s\n", response);
 
-    if (strcmp(response, "Login successful") != 0) {
+    if (strcmp(response, "Login successful") == 0) {
+        is_logged_in = 1;  // Set login flag to true
+    } else {
         printf("Login failed. Try again.\n");
         close(socket_fd);
-        exit(0);
     }
 }
 
@@ -129,7 +133,16 @@ void register_user() {
     read(socket_fd, response, BUFFER_SIZE);
     printf("%s\n", response);
 
-    close(socket_fd);
+    if (strcmp(response, "Registration successful") == 0) {
+        printf("Please log in with your new credentials.\n");
+        close(socket_fd);
+        socket_fd = connect_to_server();
+        if (socket_fd != -1) {
+            login(socket_fd);  // Automatically prompt for login after registration
+        }
+    } else {
+        close(socket_fd);
+    }
 }
 
 int is_directory(const char *path) {
@@ -232,7 +245,7 @@ void download_json(int socket_fd, const char *download_dir) {
         printf("Debug: Received data chunk: %s\n", buffer); // Debug print
 
         char *eof_pos = strstr(buffer, "END_OF_FILE");
-        if (eof_pos!= NULL) {
+        if (eof_pos != NULL) {
             fwrite(buffer, 1, eof_pos - buffer, file);
             printf("Debug: Detected end of file marker\n");
             break;
@@ -252,6 +265,7 @@ void download_json(int socket_fd, const char *download_dir) {
         printf("Debug: End of file received.\n");
     }
 }
+
 void listen_for_messages(int socket_fd) {
     char buffer[BUFFER_SIZE];
     while (1) {
@@ -285,33 +299,42 @@ int main() {
         fgets(choice, BUFFER_SIZE, stdin);
         choice[strcspn(choice, "\n")] = 0;
 
-        if (strcmp(choice, "1") == 0) {
-            if (socket_fd != -1) close(socket_fd);
-            socket_fd = connect_to_server();
-            if (socket_fd != -1) {
-                login(socket_fd);
-                pthread_create(&listener_thread, NULL, (void *(*)(void *))listen_for_messages, (void *)(intptr_t)socket_fd);
-                pthread_detach(listener_thread);
+        if (!is_logged_in) {
+            if (strcmp(choice, "1") == 0) {
+                if (socket_fd != -1) close(socket_fd);
+                socket_fd = connect_to_server();
+                if (socket_fd != -1) {
+                    login(socket_fd);
+                    if (is_logged_in) {
+                        pthread_create(&listener_thread, NULL, (void *(*)(void *))listen_for_messages, (void *)(intptr_t)socket_fd);
+                        pthread_detach(listener_thread);
+                    }
+                }
+            } else if (strcmp(choice, "2") == 0) {
+                register_user();
+            } else if (strcmp(choice, "3") == 0) {
+                if (socket_fd != -1) close(socket_fd);
+                exit(0);
+            } else {
+                printf("Invalid choice. Please try again.\n");
             }
-        } else if (strcmp(choice, "2") == 0) {
-            register_user();
-        } else if (strcmp(choice, "3") == 0) {
-            if (socket_fd != -1) upload_xml(socket_fd);
-            else printf("You need to login first.\n");
-        } else if (strcmp(choice, "4") == 0) {
-            if (socket_fd != -1) {
-                printf("Enter the directory path where you want to save the downloaded JSON file: ");
-                char download_dir[MAX_FILE_PATH];
-                fgets(download_dir, sizeof(download_dir), stdin);
-                trim_whitespace(download_dir);
-                download_json(socket_fd, download_dir);
-            } else printf("You need to login first.\n");
-        } else if (strcmp(choice, "5") == 0) {
-            if (socket_fd != -1) close(socket_fd);
-            exit(0);
         } else {
-            printf("Invalid choice. Please try again.\n");
-            fflush(stdout);
+            if (strcmp(choice, "1") == 0) {
+                if (socket_fd != -1) upload_xml(socket_fd);
+            } else if (strcmp(choice, "2") == 0) {
+                if (socket_fd != -1) {
+                    printf("Enter the directory path where you want to save the downloaded JSON file: ");
+                    char download_dir[MAX_FILE_PATH];
+                    fgets(download_dir, sizeof(download_dir), stdin);
+                    trim_whitespace(download_dir);
+                    download_json(socket_fd, download_dir);
+                }
+            } else if (strcmp(choice, "3") == 0) {
+                if (socket_fd != -1) close(socket_fd);
+                exit(0);
+            } else {
+                printf("Invalid choice. Please try again.\n");
+            }
         }
     }
     return 0;
