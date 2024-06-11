@@ -13,19 +13,24 @@
 #include <time.h>
 #include <pthread.h>
 #include "db.h"
-#include "conversion.h" // Include pentru funcțiile de conversie
+#include "conversion.h"
 #include "rest_handlers.h"
+#include <sys/stat.h>
+#include <libgen.h>
+#include <errno.h>
 
 #define MAX_USERS 100
 #define UNIX_SOCKET_PATH "/tmp/admin_socket"
 #define INET_PORT 12345
 #define REST_PORT 8888
 #define BUFFER_SIZE 256
+#define MAX_FILE_PATH 512
 
+char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
+void trim_trailing_slash(char *str);
 void cleanup_resources();
 void handle_signal(int signal);
-
 typedef struct {
     char username[BUFFER_SIZE];
     int socket_fd;
@@ -35,6 +40,15 @@ User connected_users[MAX_USERS];
 int num_connected_users = 0;
 
 pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+void trim_trailing_slash(char *str) {
+    size_t len = strlen(str);
+    if (len > 0 && str[len - 1] == '/') {
+        str[len - 1] = '\0';
+    }
+}
+
 
 static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
                                 const char *method, const char *version, const char *upload_data,
@@ -54,36 +68,120 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
     return MHD_NO;
 }
 
-void handle_upload(int client_fd, const char *file_path) {
+void handle_upload(int client_fd, const char *client_file_path) {
     char buffer[BUFFER_SIZE];
     FILE *file;
     ssize_t bytes_read;
-
-    file = fopen(file_path, "wb");
-    if (!file) {
-        perror("Failed to open file");
+    char file_name[BUFFER_SIZE];
+    char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
+    
+    if (client_file_path_copy == NULL) {
+        perror("Failed to allocate memory");
+        snprintf(buffer, sizeof(buffer), "Error: Server memory allocation failed.\n");
+        write(client_fd, buffer, strlen(buffer));
         return;
     }
 
-    while ((bytes_read = read(client_fd, buffer, sizeof(buffer))) > 0) {
-        fwrite(buffer, 1, bytes_read, file);
+    // Extract the basename from the client's file path to prevent directory traversal attacks
+    snprintf(file_name, sizeof(file_name), "%s", basename(client_file_path_copy));
+
+    // Open the file for writing in the current directory
+    char full_path[MAX_FILE_PATH];
+    snprintf(full_path, sizeof(full_path), "./%s", file_name);
+
+    printf("Debug: Starting file upload: %s\n", full_path);
+
+    file = fopen(full_path, "wb");
+    if (!file) {
+        perror("Failed to open file");
+        snprintf(buffer, sizeof(buffer), "Error: Failed to open file on server.\n");
+        write(client_fd, buffer, strlen(buffer));
+        free(client_file_path_copy);  // Free the allocated memory
+        return;
+    }
+
+    while ((bytes_read = read(client_fd, buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
+
+        // Check if the buffer contains the end-of-file marker
+        if (strstr(buffer, "END_OF_FILE")!= NULL) {
+            // Ensure that no data beyond "END_OF_FILE" is written to the file
+            char *eof_pos = strstr(buffer, "END_OF_FILE");
+            if (eof_pos!= buffer) {
+                fwrite(buffer, 1, eof_pos - buffer, file); // Write data before "END_OF_FILE"
+            }
+            break;
+        }
+
+        // Write the buffer to file
+        if (fwrite(buffer, 1, bytes_read, file)!= bytes_read) {
+            perror("Failed to write to file");
+            fclose(file);
+            snprintf(buffer, sizeof(buffer), "Error: Failed to write to file on server.\n");
+            write(client_fd, buffer, strlen(buffer));
+            free(client_file_path_copy);  // Free the allocated memory
+            return;
+        }
+    }
+
+    if (bytes_read < 0) {
+        perror("Failed to read from socket");
+        snprintf(buffer, sizeof(buffer), "Error: Failed to read from socket.\n");
+        write(client_fd, buffer, strlen(buffer));
+        fclose(file);
+        free(client_file_path_copy);  // Free the allocated memory
+        return;
     }
 
     fclose(file);
+    free(client_file_path_copy);  // Free the allocated memory
+    printf("Debug: Finished receiving file. Converting...\n");
 
-    convert_xml_to_json(file_path, "converted.json");
+    char json_file_path[MAX_FILE_PATH];
+    char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
+    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", file_name_without_ext);
 
-    snprintf(buffer, sizeof(buffer), "File uploaded and converted successfully.\n");
+    // Assume convert_xml_to_json is a function defined elsewhere
+    if (convert_xml_to_json(full_path, json_file_path)!= 0) {
+        snprintf(buffer, sizeof(buffer), "Error: Failed to convert XML to JSON.\n");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    // Store the converted JSON filename in the global variable
+    snprintf(converted_json_filename, sizeof(converted_json_filename), "converted_%s.json", file_name_without_ext);
+
+    snprintf(buffer, sizeof(buffer), "Success: File uploaded and converted successfully.\n");
     write(client_fd, buffer, strlen(buffer));
+    fsync(client_fd);
+    printf("Debug: File uploaded and converted successfully.\n");
 }
 
-void handle_download(int client_fd, const char *download_path) {
+void handle_download(int client_fd, const char *download_dir) {
     char buffer[BUFFER_SIZE];
-    char file_path[BUFFER_SIZE];
     FILE *file;
     ssize_t bytes_read;
+    char download_path[MAX_FILE_PATH * 2];
+    char directory[MAX_FILE_PATH];
 
-    file = fopen("converted.json", "rb");
+    strncpy(directory, download_dir, MAX_FILE_PATH);
+    trim_trailing_slash(directory);
+
+    int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, converted_json_filename);
+    if (len >= sizeof(download_path)) {
+        perror("Failed to create download path");
+        return;
+    }
+
+    len = snprintf(buffer, sizeof(buffer), "%s", converted_json_filename);
+    if (len >= sizeof(buffer)) {
+        perror("Failed to create buffer");
+        return;
+    }
+
+    write(client_fd, buffer, strlen(buffer) + 1);
+
+    file = fopen(download_path, "rb");
     if (!file) {
         perror("Failed to open file");
         snprintf(buffer, sizeof(buffer), "Failed to open converted JSON file.\n");
@@ -91,27 +189,22 @@ void handle_download(int client_fd, const char *download_path) {
         return;
     }
 
-    snprintf(file_path, sizeof(file_path), "%s/converted.json", download_path);
-
-    FILE *download_file = fopen(file_path, "wb");
-    if (!download_file) {
-        perror("Failed to open file for writing");
-        snprintf(buffer, sizeof(buffer), "Failed to open file for writing at specified path.\n");
-        write(client_fd, buffer, strlen(buffer));
-        fclose(file);
-        return;
-    }
-
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        fwrite(buffer, 1, bytes_read, download_file);
+        if (write(client_fd, buffer, bytes_read) != bytes_read) {
+            perror("Failed to send file to client");
+            fclose(file);
+            return;
+        }
     }
 
     fclose(file);
-    fclose(download_file);
+    printf("Debug: File sent successfully.\n");
 
-    snprintf(buffer, sizeof(buffer), "File downloaded successfully to %.200s.\n", file_path); // Limitează dimensiunea datelor
+    // Send termination signal to the client
+    snprintf(buffer, sizeof(buffer), "END_OF_FILE");
     write(client_fd, buffer, strlen(buffer));
 }
+
 void disconnect_user(const char *username) {
     pthread_mutex_lock(&users_mutex);
     for (int i = 0; i < num_connected_users; i++) {
@@ -164,7 +257,7 @@ void handle_unblock_user(int client_fd, const char *username) {
     } else {
         snprintf(buffer, sizeof(buffer), "Failed to unblock user %s.", username);
     }
-    write(client_fd, buffer, strlen(buffer) + 1);  // Asigură-te că trimiti terminatorul null
+    write(client_fd, buffer, strlen(buffer) + 1);  // Asigură-te că trimiți terminatorul null
 }
 
 void add_user(const char *username, int socket_fd) {
@@ -390,8 +483,6 @@ int main() {
 
     printf("Server is running...\n");
 
-    sleep(1);
-
     while (1) {
         FD_ZERO(&read_fds);
         FD_SET(unix_socket_fd, &read_fds);
@@ -447,3 +538,4 @@ int main() {
     close(inet_socket_fd);
     return 0;
 }
+//518

@@ -6,20 +6,25 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <libgen.h>
-#include <pthread.h> // Adaugă include-ul pentru pthread
+#include <pthread.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#define BUFFER_SIZE 1035
 #define SERVER_PORT 12345
 #define SERVER_IP "127.0.0.1"
-#define BUFFER_SIZE 256
+#define MAX_FILE_PATH 512
 
 void trim_whitespace(char *str);
+void trim_trailing_slash(char *str);
 int is_xml_file(const char *filename);
 void show_action_menu();
 int connect_to_server();
 void login(int socket_fd);
 void register_user();
 void upload_xml(int socket_fd);
-void download_json(int socket_fd, const char *download_path);
+void download_json(int socket_fd, const char *download_dir);
 void listen_for_messages(int socket_fd);
 
 void trim_whitespace(char *str) {
@@ -31,6 +36,13 @@ void trim_whitespace(char *str) {
     while (end > str && isspace((unsigned char)*end)) end--;
 
     *(end + 1) = '\0';
+}
+
+void trim_trailing_slash(char *str) {
+    size_t len = strlen(str);
+    if (len > 0 && str[len - 1] == '/') {
+        str[len - 1] = '\0';
+    }
 }
 
 int is_xml_file(const char *filename) {
@@ -103,11 +115,11 @@ void register_user() {
     char username[BUFFER_SIZE / 2], password[BUFFER_SIZE / 2], buffer[BUFFER_SIZE], response[BUFFER_SIZE];
 
     printf("Register with your username: ");
-    fgets(username, BUFFER_SIZE / 2, stdin);
+    fgets(username, sizeof(username), stdin);
     trim_whitespace(username);
 
     printf("Password: ");
-    fgets(password, BUFFER_SIZE / 2, stdin);
+    fgets(password, sizeof(password), stdin);
     trim_whitespace(password);
 
     snprintf(buffer, BUFFER_SIZE, "REGISTER %.100s %.100s", username, password);
@@ -120,13 +132,19 @@ void register_user() {
     close(socket_fd);
 }
 
+int is_directory(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        return 1;
+    }
+    return 0;
+}
+
 void upload_xml(int socket_fd) {
     char buffer[BUFFER_SIZE];
-    char response[BUFFER_SIZE];
-    char file_path[BUFFER_SIZE];
-    char download_path[BUFFER_SIZE];
+    char file_path[MAX_FILE_PATH];
     FILE *file;
-    struct stat st;
+    ssize_t bytes_read;
 
     printf("Enter the path of the XML file to upload: ");
     fgets(file_path, sizeof(file_path), stdin);
@@ -137,79 +155,91 @@ void upload_xml(int socket_fd) {
         return;
     }
 
-    if (stat(file_path, &st) != 0) {
-        perror("File not found");
-        return;
-    }
-
     file = fopen(file_path, "rb");
     if (!file) {
         perror("Failed to open file");
         return;
     }
 
-    snprintf(buffer, sizeof(buffer), "UPLOAD_XML %.200s", file_path); // Limitează dimensiunea datelor
-
+    snprintf(buffer, BUFFER_SIZE, "UPLOAD_XML %.1023s", file_path);
     write(socket_fd, buffer, strlen(buffer));
-    memset(buffer, 0, BUFFER_SIZE);
+    printf("Debug: Path sent to server: %s\n", buffer);
 
-    while (fread(buffer, 1, BUFFER_SIZE, file) > 0) {
-        write(socket_fd, buffer, BUFFER_SIZE);
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        printf("Debug: Read %zd bytes from file\n", bytes_read);
+        if (write(socket_fd, buffer, bytes_read) != bytes_read) {
+            perror("Failed to send file to server");
+            fclose(file);
+            return;
+        }
         memset(buffer, 0, BUFFER_SIZE);
     }
 
     fclose(file);
-    read(socket_fd, response, BUFFER_SIZE);
-    printf("%s\n", response);
 
-    if (strcmp(response, "File uploaded and converted successfully.") == 0) {
-        printf("Enter the path where you want to save the downloaded JSON file: ");
-        fgets(download_path, sizeof(download_path), stdin);
-        trim_whitespace(download_path);
+    snprintf(buffer, BUFFER_SIZE, "END_OF_FILE");
+    write(socket_fd, buffer, strlen(buffer));
+    printf("Debug: Finished sending file. Waiting for server response...\n");
 
-        snprintf(buffer, sizeof(buffer), "DOWNLOAD_JSON %.200s", download_path); // Limitează dimensiunea datelor
-        write(socket_fd, buffer, strlen(buffer));
-        memset(buffer, 0, BUFFER_SIZE);
-
-        read(socket_fd, response, BUFFER_SIZE);
-        if (strcmp(response, "DOWNLOAD_READY") == 0) {
-            download_json(socket_fd, download_path);
-        } else {
-            printf("Failed to download JSON file.\n");
-        }
+    // Wait for response from server
+    ssize_t bytes_received = read(socket_fd, buffer, BUFFER_SIZE);
+    if (bytes_received > 0) {
+        buffer[bytes_received] = '\0';
+        printf("Debug: Response from server after upload: %s\n", buffer);
+        printf("%s\n", buffer);
+    } else {
+        perror("Debug: No response from server or error reading response");
     }
 }
 
-void download_json(int socket_fd, const char *download_path) {
+void download_json(int socket_fd, const char *download_dir) {
     char buffer[BUFFER_SIZE];
-    char file_path[BUFFER_SIZE];
     FILE *file;
+    ssize_t bytes_received;
+    char download_path[MAX_FILE_PATH * 2];
+    char directory[MAX_FILE_PATH];
 
-    snprintf(buffer, BUFFER_SIZE, "DOWNLOAD_JSON");
+    strncpy(directory, download_dir, MAX_FILE_PATH);
+    trim_trailing_slash(directory);
+
+    snprintf(buffer, BUFFER_SIZE, "DOWNLOAD_JSON %s", directory);
     write(socket_fd, buffer, strlen(buffer));
-    memset(buffer, 0, BUFFER_SIZE);
+    printf("Debug: Path sent to server: %s\n", buffer);
 
+    // Assume the server sends the filename first
     read(socket_fd, buffer, BUFFER_SIZE);
-    if (strcmp(buffer, "DOWNLOAD_READY") != 0) {
-        printf("Failed to download JSON file.\n");
+    int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, buffer);
+    if (len >= sizeof(download_path)) {
+        perror("Failed to create download path");
         return;
     }
 
-    snprintf(file_path, sizeof(file_path), "%s/converted.json", download_path);
-
-    file = fopen(file_path, "wb");
+    file = fopen(download_path, "wb");
     if (!file) {
         perror("Failed to open file for writing");
         return;
     }
 
-    while (read(socket_fd, buffer, BUFFER_SIZE) > 0) {
-        fwrite(buffer, 1, BUFFER_SIZE, file);
-        memset(buffer, 0, BUFFER_SIZE);
+    while ((bytes_received = read(socket_fd, buffer, sizeof(buffer))) > 0) {
+        if (bytes_received >= strlen("END_OF_FILE") &&
+            strncmp(buffer + bytes_received - strlen("END_OF_FILE"), "END_OF_FILE", strlen("END_OF_FILE")) == 0) {
+            fwrite(buffer, 1, bytes_received - strlen("END_OF_FILE"), file);
+            break;
+        } else {
+            fwrite(buffer, 1, bytes_received, file);
+        }
     }
 
     fclose(file);
-    printf("File downloaded successfully to %s.\n", file_path);
+    printf("Debug: Finished receiving file. File saved to %s.\n", download_path);
+
+    if (bytes_received == 0) {
+        printf("Debug: Server closed connection.\n");
+    } else if (bytes_received < 0) {
+        perror("Error reading from server");
+    } else {
+        printf("Debug: End of file received.\n");
+    }
 }
 
 void listen_for_messages(int socket_fd) {
@@ -260,11 +290,11 @@ int main() {
             else printf("You need to login first.\n");
         } else if (strcmp(choice, "4") == 0) {
             if (socket_fd != -1) {
-                printf("Enter the path where you want to save the downloaded JSON file: ");
-                char download_path[BUFFER_SIZE];
-                fgets(download_path, sizeof(download_path), stdin);
-                trim_whitespace(download_path);
-                download_json(socket_fd, download_path);
+                printf("Enter the directory path where you want to save the downloaded JSON file: ");
+                char download_dir[MAX_FILE_PATH];
+                fgets(download_dir, sizeof(download_dir), stdin);
+                trim_whitespace(download_dir);
+                download_json(socket_fd, download_dir);
             } else printf("You need to login first.\n");
         } else if (strcmp(choice, "5") == 0) {
             if (socket_fd != -1) close(socket_fd);

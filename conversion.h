@@ -2,20 +2,51 @@
 #define CONVERSION_H
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "json.h"
+#include "lxml.h"
 
-void convert_xml_to_json(const char *xml_file, const char *json_file);
-
-
-
-void convert_xml_to_json(const char *xml_file, const char *json_file) {
-    XMLDocument doc1;
-    if (XMLDocument_load(&doc1, xml_file)) {
-        cJSON *json = XMLDocumentToJSON(&doc1);
-        SaveJSONToFile(json_file, json);
-        cJSON_Delete(json);
-        XMLDocument_free(&doc1);
+int convert_xml_to_json(const char *xml_file, const char *json_file) {
+    XMLDocument doc;
+    if (!XMLDocument_load(&doc, xml_file)) {
+        fprintf(stderr, "Failed to load XML file: %s\n", xml_file);
+        return 1;
     }
+
+    cJSON *json = XMLDocumentToJSON(&doc);
+    if (!json) {
+        fprintf(stderr, "Failed to convert XML to JSON\n");
+        XMLDocument_free(&doc);
+        return 1;
+    }
+
+    FILE *fp = fopen(json_file, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "Failed to open JSON file for writing: %s\n", json_file);
+        cJSON_Delete(json);
+        XMLDocument_free(&doc);
+        return 1;
+    }
+
+    char *json_string = cJSON_Print(json);
+    if (json_string == NULL) {
+        fprintf(stderr, "Failed to print JSON object\n");
+        fclose(fp);
+        cJSON_Delete(json);
+        XMLDocument_free(&doc);
+        return 1;
+    }
+
+    fprintf(fp, "%s", json_string);
+    fclose(fp);
+
+    free(json_string);
+    cJSON_Delete(json);
+    XMLDocument_free(&doc);
+
+    return 0;
 }
+
 
 #endif // CONVERSION_H

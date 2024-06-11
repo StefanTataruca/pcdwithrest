@@ -18,7 +18,7 @@ void db_init() {
                       "username TEXT PRIMARY KEY, "
                       "password TEXT, "
                       "role INTEGER DEFAULT 0, "
-                      "blocked INTEGER DEFAULT 0);";  // Adăugată coloana blocked
+                      "blocked INTEGER DEFAULT 0);"; 
 
     printf("Initializing database\n");
     rc = sqlite3_exec(db, sql, 0, 0, &err_msg);
