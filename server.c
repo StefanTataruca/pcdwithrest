@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #define MAX_USERS 100
 #define UNIX_SOCKET_PATH "/tmp/admin_socket"
@@ -47,6 +48,38 @@ void trim_trailing_slash(char *str) {
     if (len > 0 && str[len - 1] == '/') {
         str[len - 1] = '\0';
     }
+}
+int copy_file(const char *src, const char *dst) {
+    int source = open(src, O_RDONLY, 0);
+    int dest = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+    if (source < 0 || dest < 0) {
+        if (source >= 0) close(source);
+        if (dest >= 0) close(dest);
+        perror("Failed to open source or destination file");
+        return -1; // Return error if any file failed to open
+    }
+
+    // Allocate a buffer
+    char buffer[4096];
+    ssize_t bytes;
+    while ((bytes = read(source, buffer, sizeof(buffer))) > 0) {
+        if (write(dest, buffer, bytes) != bytes) {
+            perror("Failed to write to destination file");
+            close(source);
+            close(dest);
+            return -1;
+        }
+    }
+
+    if (bytes < 0) {
+        perror("Failed to read from source file");
+    }
+
+    close(source);
+    close(dest);
+
+    return 0; // Return success
 }
 
 
@@ -158,38 +191,52 @@ void handle_upload(int client_fd, const char *client_file_path) {
 }
 
 void handle_download(int client_fd, const char *download_dir) {
-    char buffer[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE * 4];
     FILE *file;
     ssize_t bytes_read;
-    char download_path[MAX_FILE_PATH * 2];
+    char temp_download_path[MAX_FILE_PATH * 2];
+    char final_download_path[MAX_FILE_PATH * 2];
     char directory[MAX_FILE_PATH];
 
     strncpy(directory, download_dir, MAX_FILE_PATH);
     trim_trailing_slash(directory);
 
-    int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, converted_json_filename);
-    if (len >= sizeof(download_path)) {
-        perror("Failed to create download path");
-        return;
-    }
+    snprintf(temp_download_path, sizeof(temp_download_path), "./%s", converted_json_filename);
+    snprintf(final_download_path, sizeof(final_download_path), "%s/%s", directory, converted_json_filename);
 
-    len = snprintf(buffer, sizeof(buffer), "%s", converted_json_filename);
-    if (len >= sizeof(buffer)) {
-        perror("Failed to create buffer");
-        return;
-    }
-
-    write(client_fd, buffer, strlen(buffer) + 1);
-
-    file = fopen(download_path, "rb");
-    if (!file) {
-        perror("Failed to open file");
-        snprintf(buffer, sizeof(buffer), "Failed to open converted JSON file.\n");
+    // Copy the file to the specified directory
+    if (copy_file(temp_download_path, final_download_path) != 0) {
+        perror("Failed to copy file to specified directory");
+        int len = snprintf(buffer, sizeof(buffer), "Failed to copy file to specified directory: %s.\n", directory);
+        if (len >= sizeof(buffer)) {
+            // handle error, string was truncated
+        }
         write(client_fd, buffer, strlen(buffer));
         return;
     }
 
+    printf("Debug: Copied file to: %s\n", final_download_path);
+
+    file = fopen(final_download_path, "rb");
+    if (!file) {
+        perror("Failed to open file");
+        int len = snprintf(buffer, sizeof(buffer), "Failed to open converted JSON file at path: %s.\n", final_download_path);
+        if (len >= sizeof(buffer)) {
+            // handle error, string was truncated
+        }
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    printf("Debug: File opened successfully: %s\n", final_download_path);
+
+    // Send the filename to the client
+    snprintf(buffer, sizeof(buffer), "%s", converted_json_filename);
+    write(client_fd, buffer, strlen(buffer) + 1);
+
+    // Read and send the file content
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        printf("Debug: Sending %zd bytes to client\n", bytes_read); // Debug print
         if (write(client_fd, buffer, bytes_read) != bytes_read) {
             perror("Failed to send file to client");
             fclose(file);

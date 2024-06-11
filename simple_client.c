@@ -207,7 +207,14 @@ void download_json(int socket_fd, const char *download_dir) {
     printf("Debug: Path sent to server: %s\n", buffer);
 
     // Assume the server sends the filename first
-    read(socket_fd, buffer, BUFFER_SIZE);
+    bytes_received = read(socket_fd, buffer, BUFFER_SIZE);
+    if (bytes_received <= 0) {
+        perror("Failed to receive filename from server");
+        return;
+    }
+    buffer[bytes_received] = '\0'; // Null-terminate the received data
+    printf("Debug: Filename received from server: %s\n", buffer);
+
     int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, buffer);
     if (len >= sizeof(download_path)) {
         perror("Failed to create download path");
@@ -220,10 +227,14 @@ void download_json(int socket_fd, const char *download_dir) {
         return;
     }
 
-    while ((bytes_received = read(socket_fd, buffer, sizeof(buffer))) > 0) {
-        if (bytes_received >= strlen("END_OF_FILE") &&
-            strncmp(buffer + bytes_received - strlen("END_OF_FILE"), "END_OF_FILE", strlen("END_OF_FILE")) == 0) {
-            fwrite(buffer, 1, bytes_received - strlen("END_OF_FILE"), file);
+    while ((bytes_received = read(socket_fd, buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytes_received] = '\0'; // Null-terminate the buffer to safely use strstr
+        printf("Debug: Received data chunk: %s\n", buffer); // Debug print
+
+        char *eof_pos = strstr(buffer, "END_OF_FILE");
+        if (eof_pos != NULL) {
+            fwrite(buffer, 1, eof_pos - buffer, file);
+            printf("Debug: Detected end of file marker\n");
             break;
         } else {
             fwrite(buffer, 1, bytes_received, file);
