@@ -39,9 +39,9 @@ typedef struct {
 
 User connected_users[MAX_USERS];
 int num_connected_users = 0;
+int admin_connected = 0;
 
 pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 
 void trim_trailing_slash(char *str) {
     size_t len = strlen(str);
@@ -49,10 +49,10 @@ void trim_trailing_slash(char *str) {
         str[len - 1] = '\0';
     }
 }
+
 int copy_file(const char *src, const char *dst) {
     int source = open(src, O_RDONLY, 0);
-    int dest = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-
+    int dest = open(dst, O_WRONLY);
     if (source < 0 || dest < 0) {
         if (source >= 0) close(source);
         if (dest >= 0) close(dest);
@@ -81,7 +81,6 @@ int copy_file(const char *src, const char *dst) {
 
     return 0; // Return success
 }
-
 
 static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
                                 const char *method, const char *version, const char *upload_data,
@@ -137,17 +136,17 @@ void handle_upload(int client_fd, const char *client_file_path) {
         buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
 
         // Check if the buffer contains the end-of-file marker
-        if (strstr(buffer, "END_OF_FILE")!= NULL) {
+        if (strstr(buffer, "END_OF_FILE") != NULL) {
             // Ensure that no data beyond "END_OF_FILE" is written to the file
             char *eof_pos = strstr(buffer, "END_OF_FILE");
-            if (eof_pos!= buffer) {
+            if (eof_pos != buffer) {
                 fwrite(buffer, 1, eof_pos - buffer, file); // Write data before "END_OF_FILE"
             }
             break;
         }
 
         // Write the buffer to file
-        if (fwrite(buffer, 1, bytes_read, file)!= bytes_read) {
+        if (fwrite(buffer, 1, bytes_read, file) != bytes_read) {
             perror("Failed to write to file");
             fclose(file);
             snprintf(buffer, sizeof(buffer), "Error: Failed to write to file on server.\n");
@@ -175,7 +174,7 @@ void handle_upload(int client_fd, const char *client_file_path) {
     snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", file_name_without_ext);
 
     // Assume convert_xml_to_json is a function defined elsewhere
-    if (convert_xml_to_json(full_path, json_file_path)!= 0) {
+    if (convert_xml_to_json(full_path, json_file_path) != 0) {
         snprintf(buffer, sizeof(buffer), "Error: Failed to convert XML to JSON.\n");
         write(client_fd, buffer, strlen(buffer));
         return;
@@ -259,6 +258,9 @@ void disconnect_user(const char *username) {
             close(connected_users[i].socket_fd);
             connected_users[i] = connected_users[num_connected_users - 1];
             num_connected_users--;
+            if (strcmp(username, "admin") == 0) {
+                admin_connected = 0;
+            }
             break;
         }
     }
@@ -274,6 +276,9 @@ void notify_and_disconnect_user(const char *username) {
             close(connected_users[i].socket_fd);
             connected_users[i] = connected_users[num_connected_users - 1];
             num_connected_users--;
+            if (strcmp(username, "admin") == 0) {
+                admin_connected = 0;
+            }
             break;
         }
     }
@@ -321,6 +326,9 @@ void remove_user(int socket_fd) {
     pthread_mutex_lock(&users_mutex);
     for (int i = 0; i < num_connected_users; i++) {
         if (connected_users[i].socket_fd == socket_fd) {
+            if (strcmp(connected_users[i].username, "admin") == 0) {
+                admin_connected = 0;
+            }
             connected_users[i] = connected_users[num_connected_users - 1];
             num_connected_users--;
             break;
@@ -387,6 +395,20 @@ void *handle_client(void *arg) {
         if (strcmp(command, "LOGIN") == 0) {
             if (db_check_user(username, password, &role)) {
                 if ((is_unix_socket && role == 1) || (!is_unix_socket && role == 0)) {
+                    // Check if an admin is already connected
+                    if (role == 1) {
+                        pthread_mutex_lock(&users_mutex);
+                        if (admin_connected) {
+                            pthread_mutex_unlock(&users_mutex);
+                            snprintf(buffer, sizeof(buffer), "Admin already connected. Connection rejected.");
+                            write(client_fd, buffer, strlen(buffer) + 1);
+                            close(client_fd);
+                            break; // Ensure the function exits after closing the connection
+                        } else {
+                            admin_connected = 1;
+                        }
+                        pthread_mutex_unlock(&users_mutex);
+                    }
                     snprintf(buffer, sizeof(buffer), "Login successful");
                     add_user(username, client_fd);
                     char log_msg[BUFFER_SIZE];
@@ -417,10 +439,10 @@ void *handle_client(void *arg) {
             sscanf(buffer + strlen("UNBLOCK_USER "), "%255s", username);
             handle_unblock_user(client_fd, username);
         } else if (strcmp(command, "UPLOAD_XML") == 0) {
-            sscanf(buffer + strlen("UPLOAD_XML "), "%255s", file_path); // Extrage file_path
+            sscanf(buffer + strlen("UPLOAD_XML "), "%255s", file_path); // Extract file_path
             handle_upload(client_fd, file_path);
         } else if (strcmp(command, "DOWNLOAD_JSON") == 0) {
-            sscanf(buffer + strlen("DOWNLOAD_JSON "), "%255s", download_path); // Extrage download_path
+            sscanf(buffer + strlen("DOWNLOAD_JSON "), "%255s", download_path); // Extract download_path
             handle_download(client_fd, download_path);
         } else if (strcmp(command, "VIEW_USERS") == 0) {
             view_connected_users(buffer);
@@ -524,9 +546,12 @@ int main() {
     }
 
     daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, REST_PORT, NULL, NULL, &answer_to_connection, NULL,
-                              MHD_OPTION_NOTIFY_COMPLETED, request_completed_callback, NULL,
+                              MHD_OPTION_NOTIFY_COMPLETED, NULL, NULL,
                               MHD_OPTION_END);
-    if (NULL == daemon) return 1;
+    if (NULL == daemon) {
+        perror("Failed to start REST server");
+        exit(-1);
+    }
 
     printf("Server is running...\n");
 
@@ -560,7 +585,7 @@ int main() {
             }
         }
 
-        if (FD_ISSET(inet_socket_fd, & read_fds)) {
+        if (FD_ISSET(inet_socket_fd, &read_fds)) {
             if ((client_fd = accept(inet_socket_fd, NULL, NULL)) == -1) {
                 perror("accept error");
                 exit(-1);
@@ -583,6 +608,6 @@ int main() {
     MHD_stop_daemon(daemon);
     close(unix_socket_fd);
     close(inet_socket_fd);
+    cleanup_resources();
     return 0;
 }
-//518
