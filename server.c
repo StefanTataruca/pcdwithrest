@@ -26,7 +26,7 @@
 #define REST_PORT 8888
 #define BUFFER_SIZE 256
 #define MAX_FILE_PATH 512
-
+#define MAX_PATH 1024
 char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
 void trim_trailing_slash(char *str);
@@ -52,7 +52,7 @@ void trim_trailing_slash(char *str) {
 
 int copy_file(const char *src, const char *dst) {
     int source = open(src, O_RDONLY, 0);
-    int dest = open(dst, O_WRONLY);
+    int dest = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (source < 0 || dest < 0) {
         if (source >= 0) close(source);
         if (dest >= 0) close(dest);
@@ -189,66 +189,48 @@ void handle_upload(int client_fd, const char *client_file_path) {
     printf("Debug: File uploaded and converted successfully.\n");
 }
 
+#define MAX_PATH 1024  // Define a sufficient size for paths
+
 void handle_download(int client_fd, const char *download_dir) {
-    char buffer[BUFFER_SIZE * 4];
+    char buffer[MAX_PATH];
     FILE *file;
     ssize_t bytes_read;
-    char temp_download_path[MAX_FILE_PATH * 2];
-    char final_download_path[MAX_FILE_PATH * 2];
-    char directory[MAX_FILE_PATH];
 
-    strncpy(directory, download_dir, MAX_FILE_PATH);
-    trim_trailing_slash(directory);
+    // Ensure the buffer size is ample to avoid truncation
+    char temp_download_path[MAX_PATH];
+    char final_download_path[MAX_PATH];
 
+    // Using snprintf safely by respecting buffer limits
     snprintf(temp_download_path, sizeof(temp_download_path), "./%s", converted_json_filename);
-    snprintf(final_download_path, sizeof(final_download_path), "%s/%s", directory, converted_json_filename);
+    snprintf(final_download_path, sizeof(final_download_path), "%s/%s", download_dir, converted_json_filename);
 
-    // Copy the file to the specified directory
-    if (copy_file(temp_download_path, final_download_path) != 0) {
-        perror("Failed to copy file to specified directory");
-        int len = snprintf(buffer, sizeof(buffer), "Failed to copy file to specified directory: %s.\n", directory);
-        if (len >= sizeof(buffer)) {
-            // handle error, string was truncated
-        }
-        write(client_fd, buffer, strlen(buffer));
-        return;
-    }
-
-    printf("Debug: Copied file to: %s\n", final_download_path);
-
-    file = fopen(final_download_path, "rb");
+    file = fopen(temp_download_path, "rb");
     if (!file) {
-        perror("Failed to open file");
-        int len = snprintf(buffer, sizeof(buffer), "Failed to open converted JSON file at path: %s.\n", final_download_path);
-        if (len >= sizeof(buffer)) {
-            // handle error, string was truncated
-        }
-        write(client_fd, buffer, strlen(buffer));
+        perror("Failed to open source file for reading");
         return;
     }
 
-    printf("Debug: File opened successfully: %s\n", final_download_path);
+    write(client_fd, converted_json_filename, strlen(converted_json_filename) + 1);
 
-    // Send the filename to the client
-    snprintf(buffer, sizeof(buffer), "%s", converted_json_filename);
-    write(client_fd, buffer, strlen(buffer) + 1);
-
-    // Read and send the file content
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        printf("Debug: Sending %zd bytes to client\n", bytes_read); // Debug print
         if (write(client_fd, buffer, bytes_read) != bytes_read) {
-            perror("Failed to send file to client");
+            perror("Failed to send file content to client");
             fclose(file);
             return;
         }
     }
 
-    fclose(file);
-    printf("Debug: File sent successfully.\n");
+    if (bytes_read < 0) {
+        perror("Failed to read file for sending");
+    }
 
-    // Send termination signal to the client
+    fclose(file);
+    printf("Debug: Entire file sent to client.\n");
+
+    // Send EOF marker
     snprintf(buffer, sizeof(buffer), "END_OF_FILE");
-    write(client_fd, buffer, strlen(buffer));
+    write(client_fd, buffer, strlen(buffer) + 1);
+    printf("Debug: Sent EOF marker to client.\n");
 }
 
 void disconnect_user(const char *username) {

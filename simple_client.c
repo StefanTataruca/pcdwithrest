@@ -216,8 +216,8 @@ void download_json(int socket_fd, const char *download_dir) {
     printf("Debug: Filename received from server: %s\n", buffer);
 
     int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, buffer);
-    if (len >= sizeof(download_path)) {
-        perror("Failed to create download path");
+    if (len >= sizeof(download_path) - 1) { // Check if the output was truncated
+        perror("Failed to create download path: buffer too small");
         return;
     }
 
@@ -232,7 +232,7 @@ void download_json(int socket_fd, const char *download_dir) {
         printf("Debug: Received data chunk: %s\n", buffer); // Debug print
 
         char *eof_pos = strstr(buffer, "END_OF_FILE");
-        if (eof_pos != NULL) {
+        if (eof_pos!= NULL) {
             fwrite(buffer, 1, eof_pos - buffer, file);
             printf("Debug: Detected end of file marker\n");
             break;
@@ -252,7 +252,6 @@ void download_json(int socket_fd, const char *download_dir) {
         printf("Debug: End of file received.\n");
     }
 }
-
 void listen_for_messages(int socket_fd) {
     char buffer[BUFFER_SIZE];
     while (1) {
