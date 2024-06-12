@@ -51,35 +51,47 @@ void trim_trailing_slash(char *str) {
 }
 
 int copy_file(const char *src, const char *dst) {
-    int source = open(src, O_RDONLY, 0);
-    int dest = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (source < 0 || dest < 0) {
-        if (source >= 0) close(source);
-        if (dest >= 0) close(dest);
-        perror("Failed to open source or destination file");
-        return -1; // Return error if any file failed to open
+    int in_fd = open(src, O_RDONLY);
+    if (in_fd < 0) {
+        perror("Failed to open source file");
+        return -1;
     }
 
-    // Allocate a buffer
-    char buffer[4096];
-    ssize_t bytes;
-    while ((bytes = read(source, buffer, sizeof(buffer))) > 0) {
-        if (write(dest, buffer, bytes) != bytes) {
-            perror("Failed to write to destination file");
-            close(source);
-            close(dest);
-            return -1;
+    int out_fd = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644); // Using 0644 to be less permissive
+    if (out_fd < 0) {
+        perror("Failed to open destination file");
+        close(in_fd);
+        return -1;
+    }
+
+    char buffer[1024];
+    ssize_t bytes_read, bytes_written;
+
+    while ((bytes_read = read(in_fd, buffer, sizeof(buffer))) > 0) {
+        char *ptr = buffer;
+        while (bytes_read > 0) {
+            bytes_written = write(out_fd, ptr, bytes_read);
+            if (bytes_written <= 0) {
+                perror("Failed to write to destination file");
+                close(in_fd);
+                close(out_fd);
+                return -1;
+            }
+            bytes_read -= bytes_written;
+            ptr += bytes_written;
         }
     }
 
-    if (bytes < 0) {
+    if (bytes_read < 0) {
         perror("Failed to read from source file");
+        close(in_fd);
+        close(out_fd);
+        return -1;
     }
 
-    close(source);
-    close(dest);
-
-    return 0; // Return success
+    close(in_fd);
+    close(out_fd);
+    return 0;
 }
 
 static int answer_to_connection(void *cls, struct MHD_Connection *connection, const char *url,
@@ -328,15 +340,19 @@ void view_connected_users(char *buffer) {
     pthread_mutex_unlock(&users_mutex);
 }
 
-void view_logs(char *buffer) {
-    FILE *log_file = fopen("server.log", "r");
-    if (log_file) {
-        size_t len = fread(buffer, 1, BUFFER_SIZE - 1, log_file);
-        buffer[len] = '\0';
-        fclose(log_file);
+void view_logs(int client_fd, const char *dir_path) {
+    char log_file_path[] = "server.log"; // Path to the log file on the server
+    char dest_path[BUFFER_SIZE];
+    char buffer[BUFFER_SIZE];   
+    snprintf(dest_path, sizeof(dest_path), "%s/server.log", dir_path); // Create destination path
+
+    // Copy log file to the specified directory
+    if (copy_file(log_file_path, dest_path) == 0) {
+        snprintf(buffer, BUFFER_SIZE, "Logs successfully saved to %s.", dir_path);
     } else {
-        snprintf(buffer, BUFFER_SIZE, "Failed to read logs");
+        snprintf(buffer, BUFFER_SIZE, "Failed to save logs to %s.", dir_path);
     }
+    write(client_fd, buffer, strlen(buffer) + 1);
 }
 
 int delete_file(const char *filename) {
@@ -429,8 +445,9 @@ void *handle_client(void *arg) {
             view_connected_users(buffer);
             write(client_fd, buffer, strlen(buffer) + 1);
         } else if (strcmp(command, "VIEW_LOGS") == 0) {
-            view_logs(buffer);
-            write(client_fd, buffer, strlen(buffer) + 1);
+            char dir_path[BUFFER_SIZE];
+            sscanf(buffer + strlen("VIEW_LOGS "), "%s", dir_path); // Extract directory path
+            view_logs(client_fd, dir_path); // Handle log viewing and saving
         } else if (strcmp(command, "DELETE_FILE") == 0) {
             char filename[BUFFER_SIZE];
             sscanf(buffer + strlen("DELETE_FILE "), "%255s", filename);
