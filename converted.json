@@ -9,41 +9,6 @@
 				"publish_date":	"2000-10-01",
 				"description":	"An in-depth look at creating applications \r\n      with XML."
 			}, {
-				"author":	"Ralls, Kim",
-				"title":	"Midnight Rain",
-				"genre":	"Fantasy",
-				"price":	"5.95",
-				"publish_date":	"2000-12-16",
-				"description":	"A former architect battles corporate zombies, \r\n      an evil sorceress, and her own childhood to become queen \r\n      of the world."
-			}, {
-				"author":	"Corets, Eva",
-				"title":	"Maeve Ascendant",
-				"genre":	"Fantasy",
-				"price":	"5.95",
-				"publish_date":	"2000-11-17",
-				"description":	"After the collapse of a nanotechnology \r\n      society in England, the young survivors lay the \r\n      foundation for a new society."
-			}, {
-				"author":	"Corets, Eva",
-				"title":	"Oberon's Legacy",
-				"genre":	"Fantasy",
-				"price":	"5.95",
-				"publish_date":	"2001-03-10",
-				"description":	"In post-apocalypse England, the mysterious \r\n      agent known only as Oberon helps to create a new life \r\n      for the inhabitants of London. Sequel to Maeve \r\n      Ascendant."
-			}, {
-				"author":	"Corets, Eva",
-				"title":	"The Sundered Grail",
-				"genre":	"Fantasy",
-				"price":	"5.95",
-				"publish_date":	"2001-09-10",
-				"description":	"The two daughters of Maeve, half-sisters, \r\n      battle one another for control of England. Sequel to \r\n      Oberon's Legacy."
-			}, {
-				"author":	"Randall, Cynthia",
-				"title":	"Lover Birds",
-				"genre":	"Romance",
-				"price":	"4.95",
-				"publish_date":	"2000-09-02",
-				"description":	"When Carla meets Paul at an ornithology \r\n      conference, tempers fly as feathers get ruffled."
-			}, {
 				"author":	"Thurman, Paula",
 				"title":	"Splish Splash",
 				"genre":	"Romance",
@@ -64,27 +29,6 @@
 				"price":	"6.95",
 				"publish_date":	"2000-11-02",
 				"description":	"After an inadvertant trip through a Heisenberg\r\n      Uncertainty Device, James Salway discovers the problems \r\n      of being quantum."
-			}, {
-				"author":	"O'Brien, Tim",
-				"title":	"Microsoft .NET: The Programming Bible",
-				"genre":	"Computer",
-				"price":	"36.95",
-				"publish_date":	"2000-12-09",
-				"description":	"Microsoft's .NET initiative is explored in \r\n      detail in this deep programmer's reference."
-			}, {
-				"author":	"O'Brien, Tim",
-				"title":	"MSXML3: A Comprehensive Guide",
-				"genre":	"Computer",
-				"price":	"36.95",
-				"publish_date":	"2000-12-01",
-				"description":	"The Microsoft MSXML3 parser is covered in \r\n      detail, with attention to XML DOM interfaces, XSLT processing, \r\n      SAX and more."
-			}, {
-				"author":	"Galos, Mike",
-				"title":	"Visual Studio 7: A Comprehensive Guide",
-				"genre":	"Computer",
-				"price":	"49.95",
-				"publish_date":	"2001-04-16",
-				"description":	"Microsoft Visual Studio 7 is explored in depth,\r\n      looking at how Visual Basic, Visual C++, C#, and ASP+ are \r\n      integrated into a comprehensive development \r\n      environment."
 			}]
 	}
 }

@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Ensure ports are not in use
 fuser -k 12345/tcp
 fuser -k 8888/tcp
 
@@ -32,7 +31,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Wait for user to end the server
+# Wait to end the server
 read -p "Press Enter to stop the server..."
 
 # Stop server

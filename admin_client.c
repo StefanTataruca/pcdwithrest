@@ -85,7 +85,6 @@ void handle_menu(int sockfd) {
             send(sockfd, buffer, strlen(buffer), 0);
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("Users:\n%s\n", buffer);
-
         } else {
             printf("Invalid choice. Please try again.\n");
             continue;
@@ -132,11 +131,13 @@ int main() {
         if (strcmp(buffer, "Login successful") == 0) {
             handle_menu(sockfd);
             break;
+        } else if (strcmp(buffer, "Admin already connected. Connection rejected.") == 0) {
+            close(sockfd);
+            exit(EXIT_FAILURE);
         } else {
             printf("Login failed. Try again.\n");
+            close(sockfd);
         }
-
-        close(sockfd);
     }
 
     return 0;

@@ -34,6 +34,9 @@ char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
 void trim_trailing_slash(char *str);
 void cleanup_resources();
+void handle_upload(int client_fd, const char *username, const char *client_file_path);
+void handle_download(int client_fd, const char *username, const char *download_dir);
+
 void handle_signal(int signal);
 typedef struct {
     char username[BUFFER_SIZE];
@@ -43,7 +46,7 @@ typedef struct {
 User connected_users[MAX_USERS];
 int num_connected_users = 0;
 int admin_connected = 0;
-
+pthread_mutex_t admin_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void trim_trailing_slash(char *str) {
@@ -153,7 +156,8 @@ char *load_file_content(const char *file_path) {
     return buffer;
 }
 
-void handle_upload(int client_fd, const char *client_file_path) {
+
+void handle_upload(int client_fd, const char *authenticated_username, const char *client_file_path) {
     char buffer[BUFFER_SIZE];
     char file_name[BUFFER_SIZE];
     char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
@@ -231,9 +235,14 @@ void handle_upload(int client_fd, const char *client_file_path) {
     // Process the file content (e.g., convert XML to JSON)
     printf("Debug: File content loaded into memory. Processing...\n");
 
+    // Extract the base name without the extension for the JSON file naming
+    char *dot_position = strrchr(file_name, '.');
+    if (dot_position) {
+        *dot_position = '\0';  // Remove the extension
+    }
+
     char json_file_path[MAX_FILE_PATH];
-    char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
-    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", file_name_without_ext);
+    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s_%s.json", authenticated_username, file_name);
 
     // Assume convert_xml_to_json is a function defined elsewhere
     if (convert_xml_to_json(full_path, json_file_path) != 0) {
@@ -243,8 +252,13 @@ void handle_upload(int client_fd, const char *client_file_path) {
         return;
     }
 
+    // Add log message for conversion
+    char log_msg[2048]; // Increased buffer size
+    snprintf(log_msg, sizeof(log_msg), "User %s converted file %s to %s", authenticated_username, full_path, json_file_path);
+    log_message(log_msg);
+
     // Store the converted JSON filename in the global variable
-    snprintf(converted_json_filename, sizeof(converted_json_filename), "converted_%s.json", file_name_without_ext);
+    snprintf(converted_json_filename, sizeof(converted_json_filename), "converted_%s_%s.json", authenticated_username, file_name);
 
     snprintf(buffer, sizeof(buffer), "Success: File uploaded and converted successfully.\n");
     write(client_fd, buffer, strlen(buffer));
@@ -253,10 +267,13 @@ void handle_upload(int client_fd, const char *client_file_path) {
 
     // Free the allocated memory for file content
     free(file_content);
+
+    // Add log message for upload
+    snprintf(log_msg, sizeof(log_msg), "User %s uploaded file %s", authenticated_username, client_file_path);
+    log_message(log_msg);
 }
 
-
-void handle_download(int client_fd, const char *download_dir) {
+void handle_download(int client_fd, const char *username, const char *download_dir) {
     char buffer[MAX_PATH];
     FILE *file;
     ssize_t bytes_read;
@@ -292,11 +309,18 @@ void handle_download(int client_fd, const char *download_dir) {
     fclose(file);
     printf("Debug: Entire file sent to client.\n");
 
+    // Add log message for download
+    char log_msg[2048]; // Increased buffer size
+    snprintf(log_msg, sizeof(log_msg), "User %s downloaded file %s", username, converted_json_filename);
+    log_message(log_msg);
+
     // Send EOF marker
     snprintf(buffer, sizeof(buffer), "END_OF_FILE");
     write(client_fd, buffer, strlen(buffer) + 1);
     printf("Debug: Sent EOF marker to client.\n");
 }
+
+
 
 void disconnect_user(const char *username) {
     pthread_mutex_lock(&users_mutex);
@@ -331,6 +355,7 @@ void notify_and_disconnect_user(const char *username) {
     }
     pthread_mutex_unlock(&users_mutex);
 }
+
 
 void handle_block_user(int client_fd, const char *username) {
     char buffer[BUFFER_SIZE];
@@ -376,14 +401,15 @@ void remove_user(int socket_fd) {
             if (strcmp(connected_users[i].username, "admin") == 0) {
                 admin_connected = 0;
             }
-            connected_users[i] = connected_users[num_connected_users - 1];
+            for (int j = i; j < num_connected_users - 1; j++) {
+                connected_users[j] = connected_users[j + 1];
+            }
             num_connected_users--;
             break;
         }
     }
     pthread_mutex_unlock(&users_mutex);
 }
-
 void view_connected_users(char *buffer) {
     pthread_mutex_lock(&users_mutex);
     snprintf(buffer, BUFFER_SIZE, "Connected users:\n");
@@ -434,27 +460,114 @@ int delete_file(const char *filename) {
     return 0;
 }
 
+char *read_file(const char *filename) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        printf("Could not open file: %s\n", filename);
+        return NULL;
+    }
+    fseek(file, 0, SEEK_END);
+    long length = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char *content = (char *)malloc(length + 1);
+    if (!content) {
+        fclose(file);
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
+    fread(content, 1, length, file);
+    content[length] = '\0';
+    fclose(file);
+    return content;
+}
+
+void search_json(cJSON *json, const char *path, int client_fd) {
+    char buffer[MAX_BUFFER];
+    cJSON *current = json;
+
+    char *token = strtok((char *)path, ".");
+    while (token != NULL) {
+        char *index_str = strchr(token, '[');
+        if (index_str != NULL) {
+            *index_str = '\0';
+            int index = atoi(index_str + 1);
+            cJSON *array = cJSON_GetObjectItemCaseSensitive(current, token);
+            if (array == NULL || !cJSON_IsArray(array)) {
+                snprintf(buffer, sizeof(buffer), "Path not found: %s\n", path);
+                write(client_fd, buffer, strlen(buffer));
+                return;
+            }
+            current = cJSON_GetArrayItem(array, index);
+        } else {
+            current = cJSON_GetObjectItemCaseSensitive(current, token);
+        }
+
+        if (current == NULL) {
+            snprintf(buffer, sizeof(buffer), "Path not found: %s\n", path);
+            write(client_fd, buffer, strlen(buffer));
+            return;
+        }
+        token = strtok(NULL, ".");
+    }
+
+    char *result = cJSON_Print(current);
+    if (result != NULL) {
+        snprintf(buffer, sizeof(buffer), "Result: %s\n", result);
+        free(result);
+    } else {
+        snprintf(buffer, sizeof(buffer), "No result found for the given path: %s\n", path);
+    }
+    write(client_fd, buffer, strlen(buffer));
+}
+void handle_search(int client_fd, const char *file_path, const char *search_path) {
+    char buffer[MAX_BUFFER];
+    char *json_string = read_file(file_path);
+    if (!json_string) {
+        snprintf(buffer, sizeof(buffer), "Error: Unable to read JSON file.\n");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    cJSON *json = cJSON_Parse(json_string);
+    free(json_string);
+
+    if (json == NULL) {
+        snprintf(buffer, sizeof(buffer), "Error: Invalid JSON format.\n");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    search_json(json, search_path, client_fd);
+    cJSON_Delete(json);
+}
+
 void *handle_client(void *arg) {
     int client_fd = *((int *)arg);
     int is_unix_socket = *((int *)(arg + sizeof(int)));
     free(arg);
 
-    char buffer[BUFFER_SIZE];
-    char file_path[BUFFER_SIZE];
-    char download_path[BUFFER_SIZE];
-    memset(buffer, 0, BUFFER_SIZE);
-    memset(file_path, 0, BUFFER_SIZE);
-    memset(download_path, 0, BUFFER_SIZE);
+    char buffer[MAX_BUFFER];
+    char file_path[MAX_BUFFER];
+    char download_path[MAX_BUFFER];
+    char authenticated_username[BUFFER_SIZE];
+    memset(buffer, 0, MAX_BUFFER);
+    memset(file_path, 0, MAX_BUFFER);
+    memset(download_path, 0, MAX_BUFFER);
 
     while (1) {
-        ssize_t bytes_read = read(client_fd, buffer, BUFFER_SIZE - 1);
+        ssize_t bytes_read = read(client_fd, buffer, MAX_BUFFER - 1);
         if (bytes_read <= 0) {
+            if (bytes_read == 0) {
+                printf("Client closed the connection\n");
+            } else {
+                perror("Read error");
+            }
             break;
         }
         buffer[bytes_read] = '\0';
 
         printf("Debug: Received raw data: %s\n", buffer);
-        char command[BUFFER_SIZE], username[BUFFER_SIZE], password[BUFFER_SIZE];
+        char command[MAX_BUFFER], username[MAX_BUFFER], password[MAX_BUFFER];
         int role;
         sscanf(buffer, "%s %s %s", command, username, password);
         trim_whitespace(username);
@@ -462,87 +575,121 @@ void *handle_client(void *arg) {
 
         if (strcmp(command, "LOGIN") == 0) {
             if (db_check_user(username, password, &role)) {
+                printf("User %s logged in as %s\n", username, role == 1 ? "admin" : "simple");
                 if ((is_unix_socket && role == 1) || (!is_unix_socket && role == 0)) {
-                    // Check if an admin is already connected
-                    if (role == 1) {
-                        pthread_mutex_lock(&users_mutex);
-                        if (admin_connected) {
-                            pthread_mutex_unlock(&users_mutex);
-                            snprintf(buffer, sizeof(buffer), "Admin already connected. Connection rejected.");
-                            write(client_fd, buffer, strlen(buffer) + 1);
-                            close(client_fd);
-                            break; // Ensure the function exits after closing the connection
-                        } else {
-                            admin_connected = 1;
-                        }
-                        pthread_mutex_unlock(&users_mutex);
+                    pthread_mutex_lock(&admin_mutex);
+                    if (role == 1 && admin_connected) {
+                        pthread_mutex_unlock(&admin_mutex);
+                        snprintf(buffer, sizeof(buffer), "Admin already connected. Connection rejected.");
+                        write(client_fd, buffer, strlen(buffer) + 1);
+                        close(client_fd);
+                        return NULL;
+                    } else if (role == 1) {
+                        admin_connected = 1;
                     }
+                    pthread_mutex_unlock(&admin_mutex);
+
                     snprintf(buffer, sizeof(buffer), "Login successful");
                     add_user(username, client_fd);
-                    char log_msg[BUFFER_SIZE];
+                    char log_msg[MAX_BUFFER];
                     snprintf(log_msg, sizeof(log_msg), "User %.100s logged in as %s", username, is_unix_socket ? "admin" : "simple");
                     log_message(log_msg);
+                    strcpy(authenticated_username, username);
                 } else {
                     snprintf(buffer, sizeof(buffer), "Access denied");
                 }
             } else {
+                printf("Login failed for user %s\n", username);
                 snprintf(buffer, sizeof(buffer), "Login failed");
             }
-            write(client_fd, buffer, strlen(buffer) + 1);
+            if (write(client_fd, buffer, strlen(buffer) + 1) <= 0) {
+                perror("Write error");
+                break;
+            }
         } else if (strcmp(command, "REGISTER") == 0) {
             if (!db_user_exists(username)) {
                 db_add_user(username, password);
                 snprintf(buffer, sizeof(buffer), "User registered successfully");
-                char log_msg[BUFFER_SIZE];
+                char log_msg[MAX_BUFFER];
                 snprintf(log_msg, sizeof(log_msg), "User %.100s registered as simple", username);
                 log_message(log_msg);
             } else {
                 snprintf(buffer, sizeof(buffer), "Username already exists");
             }
-            write(client_fd, buffer, strlen(buffer) + 1);
+            if (write(client_fd, buffer, strlen(buffer) + 1) <= 0) {
+                perror("Write error");
+                break;
+            }
         } else if (strcmp(command, "BLOCK_USER") == 0) {
             sscanf(buffer + strlen("BLOCK_USER "), "%255s", username);
             handle_block_user(client_fd, username);
         } else if (strcmp(command, "VIEW_ALL_USERS") == 0) {
             view_all_users(client_fd);
-
         } else if (strcmp(command, "UNBLOCK_USER") == 0) {
             sscanf(buffer + strlen("UNBLOCK_USER "), "%255s", username);
             handle_unblock_user(client_fd, username);
-        } else if (strcmp(command, "UPLOAD_XML") == 0) {
+         } else if (strcmp(command, "UPLOAD_XML") == 0) {
             sscanf(buffer + strlen("UPLOAD_XML "), "%255s", file_path); // Extract file_path
-            handle_upload(client_fd, file_path);
+            printf("Debug: username = %s\n", authenticated_username);
+            handle_upload(client_fd, authenticated_username, file_path);
         } else if (strcmp(command, "DOWNLOAD_JSON") == 0) {
             sscanf(buffer + strlen("DOWNLOAD_JSON "), "%255s", download_path); // Extract download_path
-            handle_download(client_fd, download_path);
+            handle_download(client_fd, authenticated_username, download_path);
+        }  else if (strcmp(command, "SEARCH_JSON") == 0) {
+            char search_path[MAX_BUFFER];
+            sscanf(buffer + strlen("SEARCH_JSON "), "%s %s", file_path, search_path);
+            handle_search(client_fd, file_path, search_path);
         } else if (strcmp(command, "VIEW_USERS") == 0) {
             view_connected_users(buffer);
-            write(client_fd, buffer, strlen(buffer) + 1);
+            if (write(client_fd, buffer, strlen(buffer) + 1) <= 0) {
+                perror("Write error");
+                break;
+            }
         } else if (strcmp(command, "VIEW_LOGS") == 0) {
-            char dir_path[BUFFER_SIZE];
-            sscanf(buffer + strlen("VIEW_LOGS "), "%s", dir_path); // Extract directory path
-            view_logs(client_fd, dir_path); // Handle log viewing and saving
+            char dir_path[MAX_BUFFER];
+            sscanf(buffer + strlen("VIEW_LOGS "), "%s", dir_path);
+            view_logs(client_fd, dir_path);
         } else if (strcmp(command, "DELETE_FILE") == 0) {
-            char filename[BUFFER_SIZE];
+            char filename[MAX_BUFFER];
             sscanf(buffer + strlen("DELETE_FILE "), "%255s", filename);
             if (delete_file(filename)) {
                 snprintf(buffer, sizeof(buffer), "File %.100s deleted successfully", filename);
-                char log_msg[BUFFER_SIZE];
+                char log_msg[MAX_BUFFER];
                 snprintf(log_msg, sizeof(log_msg), "File %.100s deleted", filename);
                 log_message(log_msg);
             } else {
                 snprintf(buffer, sizeof(buffer), "Failed to delete file %.100s", filename);
             }
-            write(client_fd, buffer, strlen(buffer) + 1);
+            if (write(client_fd, buffer, strlen(buffer) + 1) <= 0) {
+                perror("Write error");
+                break;
+            }
         } else if (strcmp(command, "LOGOUT") == 0) {
             snprintf(buffer, sizeof(buffer), "Logged out successfully");
-            write(client_fd, buffer, strlen(buffer) + 1);
+            if (write(client_fd, buffer, strlen(buffer) + 1) <= 0) {
+                perror("Write error");
+                break;
+            }
             remove_user(client_fd);
+            if (is_unix_socket) {
+                pthread_mutex_lock(&admin_mutex);
+                admin_connected = 0;
+                pthread_mutex_unlock(&admin_mutex);
+            }
+            close(client_fd);
+            printf("User %s logged out\n", username);
             break;
         }
-        memset(buffer, 0, BUFFER_SIZE);
+        memset(buffer, 0, MAX_BUFFER);
+    }
+    remove_user(client_fd);
+    if (is_unix_socket) {
+        pthread_mutex_lock(&admin_mutex);
+        admin_connected = 0;
+        pthread_mutex_unlock(&admin_mutex);
     }
     close(client_fd);
+    printf("Connection closed and cleaned up\n");
     return NULL;
 }
 
