@@ -8,6 +8,7 @@
         "microhttpd.h": "c",
         "stdlib.h": "c",
         "un.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "string.h": "c"
     }
 }

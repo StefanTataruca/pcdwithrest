@@ -118,8 +118,8 @@ void handle_upload(int client_fd, const char *client_file_path) {
     FILE *file;
     ssize_t bytes_read;
     char file_name[BUFFER_SIZE];
-    char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
-    
+    char *client_file_path_copy = strdup(client_file_path);
+
     if (client_file_path_copy == NULL) {
         perror("Failed to allocate memory");
         snprintf(buffer, sizeof(buffer), "Error: Server memory allocation failed.\n");
@@ -127,44 +127,33 @@ void handle_upload(int client_fd, const char *client_file_path) {
         return;
     }
 
-    // Extract the basename from the client's file path to prevent directory traversal attacks
     snprintf(file_name, sizeof(file_name), "%s", basename(client_file_path_copy));
-
-    // Open the file for writing in the current directory
     char full_path[MAX_FILE_PATH];
     snprintf(full_path, sizeof(full_path), "./%s", file_name);
 
     printf("Debug: Starting file upload: %s\n", full_path);
-
     file = fopen(full_path, "wb");
     if (!file) {
         perror("Failed to open file");
         snprintf(buffer, sizeof(buffer), "Error: Failed to open file on server.\n");
         write(client_fd, buffer, strlen(buffer));
-        free(client_file_path_copy);  // Free the allocated memory
+        free(client_file_path_copy);
         return;
     }
 
     while ((bytes_read = read(client_fd, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
-
-        // Check if the buffer contains the end-of-file marker
         if (strstr(buffer, "END_OF_FILE") != NULL) {
-            // Ensure that no data beyond "END_OF_FILE" is written to the file
             char *eof_pos = strstr(buffer, "END_OF_FILE");
-            if (eof_pos != buffer) {
-                fwrite(buffer, 1, eof_pos - buffer, file); // Write data before "END_OF_FILE"
-            }
+            fwrite(buffer, 1, eof_pos - buffer, file);
             break;
         }
-
-        // Write the buffer to file
         if (fwrite(buffer, 1, bytes_read, file) != bytes_read) {
             perror("Failed to write to file");
             fclose(file);
             snprintf(buffer, sizeof(buffer), "Error: Failed to write to file on server.\n");
             write(client_fd, buffer, strlen(buffer));
-            free(client_file_path_copy);  // Free the allocated memory
+            free(client_file_path_copy);
             return;
         }
     }
@@ -174,27 +163,21 @@ void handle_upload(int client_fd, const char *client_file_path) {
         snprintf(buffer, sizeof(buffer), "Error: Failed to read from socket.\n");
         write(client_fd, buffer, strlen(buffer));
         fclose(file);
-        free(client_file_path_copy);  // Free the allocated memory
+        free(client_file_path_copy);
         return;
     }
 
     fclose(file);
-    free(client_file_path_copy);  // Free the allocated memory
+    free(client_file_path_copy);
     printf("Debug: Finished receiving file. Converting...\n");
 
     char json_file_path[MAX_FILE_PATH];
-    char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
-    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", file_name_without_ext);
-
-    // Assume convert_xml_to_json is a function defined elsewhere
+    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", strtok(file_name, "."));
     if (convert_xml_to_json(full_path, json_file_path) != 0) {
         snprintf(buffer, sizeof(buffer), "Error: Failed to convert XML to JSON.\n");
         write(client_fd, buffer, strlen(buffer));
         return;
     }
-
-    // Store the converted JSON filename in the global variable
-    snprintf(converted_json_filename, sizeof(converted_json_filename), "converted_%s.json", file_name_without_ext);
 
     snprintf(buffer, sizeof(buffer), "Success: File uploaded and converted successfully.\n");
     write(client_fd, buffer, strlen(buffer));
@@ -202,19 +185,14 @@ void handle_upload(int client_fd, const char *client_file_path) {
     printf("Debug: File uploaded and converted successfully.\n");
 }
 
-
 void handle_download(int client_fd, const char *download_dir) {
-    char buffer[MAX_PATH];
+    char buffer[MAX_FILE_PATH];
     FILE *file;
     ssize_t bytes_read;
 
-    // Ensure the buffer size is ample to avoid truncation
-    char temp_download_path[MAX_PATH];
-    char final_download_path[MAX_PATH];
-
-    // Using snprintf safely by respecting buffer limits
-    snprintf(temp_download_path, sizeof(temp_download_path), "./%s", converted_json_filename);
-    snprintf(final_download_path, sizeof(final_download_path), "%s/%s", download_dir, converted_json_filename);
+    char temp_download_path[MAX_FILE_PATH];
+    snprintf(temp_download_path, sizeof(temp_download_path), "./%s", "converted_file.json"); // Example filename
+    snprintf(buffer, sizeof(buffer), "%s/%s", download_dir, "converted_file.json");
 
     file = fopen(temp_download_path, "rb");
     if (!file) {
@@ -222,8 +200,7 @@ void handle_download(int client_fd, const char *download_dir) {
         return;
     }
 
-    write(client_fd, converted_json_filename, strlen(converted_json_filename) + 1);
-
+    write(client_fd, "converted_file.json", strlen("converted_file.json") + 1);
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
         if (write(client_fd, buffer, bytes_read) != bytes_read) {
             perror("Failed to send file content to client");
@@ -239,7 +216,6 @@ void handle_download(int client_fd, const char *download_dir) {
     fclose(file);
     printf("Debug: Entire file sent to client.\n");
 
-    // Send EOF marker
     snprintf(buffer, sizeof(buffer), "END_OF_FILE");
     write(client_fd, buffer, strlen(buffer) + 1);
     printf("Debug: Sent EOF marker to client.\n");
