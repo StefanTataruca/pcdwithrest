@@ -19,6 +19,7 @@ void display_menu() {
     printf("4. Unblock user\n");
     printf("5. Delete file (XML/JSON)\n");
     printf("6. Logout\n");
+    printf("7. View all users\n");
     printf("Enter your choice: ");
 }
 
@@ -79,6 +80,12 @@ void handle_menu(int sockfd) {
             snprintf(buffer, sizeof(buffer), "LOGOUT");
             send(sockfd, buffer, strlen(buffer), 0);
             break;
+        } else if (strcmp(choice, "7") == 0) {
+            snprintf(buffer, sizeof(buffer), "VIEW_ALL_USERS");
+            send(sockfd, buffer, strlen(buffer), 0);
+            recv(sockfd, buffer, sizeof(buffer), 0);
+            printf("Users:\n%s\n", buffer);
+
         } else {
             printf("Invalid choice. Please try again.\n");
             continue;

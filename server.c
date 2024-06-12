@@ -24,9 +24,10 @@
 #define UNIX_SOCKET_PATH "/tmp/admin_socket"
 #define INET_PORT 12345
 #define REST_PORT 8888
-#define BUFFER_SIZE 256
+
 #define MAX_FILE_PATH 512
 #define MAX_PATH 1024
+#define LARGE_BUFFER_SIZE 8192
 char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
 void trim_trailing_slash(char *str);
@@ -339,7 +340,24 @@ void view_connected_users(char *buffer) {
     }
     pthread_mutex_unlock(&users_mutex);
 }
+void view_all_users(int client_fd) {
+    char buffer[BUFFER_SIZE];
+    char *user_list = malloc(LARGE_BUFFER_SIZE); // Dynamically allocate a larger buffer
+    if (user_list == NULL) {
+        snprintf(buffer, sizeof(buffer), "Error: Server memory allocation failed.");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
 
+    if (db_fetch_all_users(user_list, LARGE_BUFFER_SIZE) == 0) {
+        snprintf(buffer, sizeof(buffer), "All users:\n%s", user_list);
+        write(client_fd, buffer, strlen(buffer));
+    } else {
+        snprintf(buffer, sizeof(buffer), "Error fetching user list.");
+        write(client_fd, buffer, strlen(buffer));
+    }
+    free(user_list);
+}
 void view_logs(int client_fd, const char *dir_path) {
     char log_file_path[] = "server.log"; // Path to the log file on the server
     char dest_path[BUFFER_SIZE];
@@ -432,6 +450,9 @@ void *handle_client(void *arg) {
         } else if (strcmp(command, "BLOCK_USER") == 0) {
             sscanf(buffer + strlen("BLOCK_USER "), "%255s", username);
             handle_block_user(client_fd, username);
+        } else if (strcmp(command, "VIEW_ALL_USERS") == 0) {
+            view_all_users(client_fd);
+
         } else if (strcmp(command, "UNBLOCK_USER") == 0) {
             sscanf(buffer + strlen("UNBLOCK_USER "), "%255s", username);
             handle_unblock_user(client_fd, username);

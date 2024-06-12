@@ -8,5 +8,5 @@ void db_init();
 int db_is_user_blocked(const char *username);
 int db_block_user(const char *username);
 int db_unblock_user(const char *username);
-
+int db_fetch_all_users(char *buffer, int buffer_size);
 #endif

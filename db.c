@@ -185,3 +185,27 @@ int db_check_user(const char *username, const char *password, int *role) {
         return 0;
     }
 }
+int db_fetch_all_users(char *buffer, int buffer_size) {
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT username, role, blocked FROM Users ORDER BY username";
+    
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    int len = 0;
+    len += snprintf(buffer + len, buffer_size - len, "Username\tRole\tBlocked\n");
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *username = (const char *)sqlite3_column_text(stmt, 0);
+        int role = sqlite3_column_int(stmt, 1);
+        int blocked = sqlite3_column_int(stmt, 2);
+        if (len < buffer_size) {
+            len += snprintf(buffer + len, buffer_size - len, "%s\t%d\t%d\n", username, role, blocked);
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return 0;
+}
