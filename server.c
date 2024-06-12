@@ -189,7 +189,6 @@ void handle_upload(int client_fd, const char *client_file_path) {
     printf("Debug: File uploaded and converted successfully.\n");
 }
 
-#define MAX_PATH 1024  // Define a sufficient size for paths
 
 void handle_download(int client_fd, const char *download_dir) {
     char buffer[MAX_PATH];

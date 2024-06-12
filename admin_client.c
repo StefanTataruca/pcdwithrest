@@ -14,7 +14,7 @@
 void display_menu() {
     printf("Admin Menu:\n");
     printf("1. View connected users\n");
-    printf("2. View logs\n");
+    printf("2. View and save logs\n");
     printf("3. Block user\n");
     printf("4. Unblock user\n");
     printf("5. Delete file (XML/JSON)\n");
@@ -39,7 +39,12 @@ void handle_menu(int sockfd) {
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "2") == 0) {
-            snprintf(buffer, sizeof(buffer), "VIEW_LOGS");
+            char log_dir[BUFFER_SIZE];
+            printf("Enter directory to save the logs: ");
+            fgets(log_dir, sizeof(log_dir), stdin);
+            log_dir[strcspn(log_dir, "\n")] = 0;
+
+            snprintf(buffer, sizeof(buffer), "VIEW_LOGS %.245s", log_dir);
             send(sockfd, buffer, strlen(buffer), 0);
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
@@ -49,7 +54,7 @@ void handle_menu(int sockfd) {
             username[strcspn(username, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "BLOCK_USER %.100s", username);
             send(sockfd, buffer, strlen(buffer), 0);
-            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
+            memset(buffer, 0, sizeof(buffer));
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "4") == 0) {
@@ -58,7 +63,7 @@ void handle_menu(int sockfd) {
             username[strcspn(username, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "UNBLOCK_USER %.100s", username);
             send(sockfd, buffer, strlen(buffer), 0);
-            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
+            memset(buffer, 0, sizeof(buffer));
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "5") == 0) {
@@ -67,7 +72,7 @@ void handle_menu(int sockfd) {
             filename[strcspn(filename, "\n")] = 0;
             snprintf(buffer, sizeof(buffer), "DELETE_FILE %.100s", filename);
             send(sockfd, buffer, strlen(buffer), 0);
-            memset(buffer, 0, sizeof(buffer));  // Golește bufferul înainte de a citi răspunsul
+            memset(buffer, 0, sizeof(buffer));
             recv(sockfd, buffer, sizeof(buffer), 0);
             printf("%s\n", buffer);
         } else if (strcmp(choice, "6") == 0) {
