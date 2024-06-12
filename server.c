@@ -28,6 +28,8 @@
 #define MAX_FILE_PATH 512
 #define MAX_PATH 1024
 #define LARGE_BUFFER_SIZE 8192
+#define MAX_ADMIN_THREADS 5
+#define MAX_USER_THREADS 10
 char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
 void trim_trailing_slash(char *str);
@@ -113,13 +115,49 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
     return MHD_NO;
 }
 
+char *load_file_content(const char *file_path) {
+    FILE *file = fopen(file_path, "rb");
+    if (!file) {
+        perror("Failed to open file");
+        return NULL;
+    }
+
+    // Seek to the end of the file to determine the file size
+    fseek(file, 0, SEEK_END);
+    int size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Allocate memory for the file content
+    char *buffer = malloc(size + 1); // +1 for the null terminator
+    if (!buffer) {
+        perror("Failed to allocate memory");
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the file content into the buffer
+    size_t read_size = fread(buffer, 1, size, file);
+    if (read_size != size) {
+        perror("Failed to read file content");
+        free(buffer);
+        fclose(file);
+        return NULL;
+    }
+
+    // Null-terminate the buffer
+    buffer[size] = '\0';
+
+    // Close the file
+    fclose(file);
+
+    return buffer;
+}
+
 void handle_upload(int client_fd, const char *client_file_path) {
     char buffer[BUFFER_SIZE];
-    FILE *file;
-    ssize_t bytes_read;
     char file_name[BUFFER_SIZE];
     char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
-    
+
     if (client_file_path_copy == NULL) {
         perror("Failed to allocate memory");
         snprintf(buffer, sizeof(buffer), "Error: Server memory allocation failed.\n");
@@ -136,7 +174,7 @@ void handle_upload(int client_fd, const char *client_file_path) {
 
     printf("Debug: Starting file upload: %s\n", full_path);
 
-    file = fopen(full_path, "wb");
+    FILE *file = fopen(full_path, "wb");
     if (!file) {
         perror("Failed to open file");
         snprintf(buffer, sizeof(buffer), "Error: Failed to open file on server.\n");
@@ -145,7 +183,8 @@ void handle_upload(int client_fd, const char *client_file_path) {
         return;
     }
 
-    while ((bytes_read = read(client_fd, buffer, sizeof(buffer) - 1)) > 0) {
+    ssize_t bytes_read;
+    while ((bytes_read = read(client_fd, buffer, sizeof(buffer))) > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
 
         // Check if the buffer contains the end-of-file marker
@@ -180,7 +219,17 @@ void handle_upload(int client_fd, const char *client_file_path) {
 
     fclose(file);
     free(client_file_path_copy);  // Free the allocated memory
-    printf("Debug: Finished receiving file. Converting...\n");
+
+    // Load file content into dynamically allocated memory
+    char *file_content = load_file_content(full_path);
+    if (!file_content) {
+        snprintf(buffer, sizeof(buffer), "Error: Failed to load file content into memory.\n");
+        write(client_fd, buffer, strlen(buffer));
+        return;
+    }
+
+    // Process the file content (e.g., convert XML to JSON)
+    printf("Debug: File content loaded into memory. Processing...\n");
 
     char json_file_path[MAX_FILE_PATH];
     char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
@@ -190,6 +239,7 @@ void handle_upload(int client_fd, const char *client_file_path) {
     if (convert_xml_to_json(full_path, json_file_path) != 0) {
         snprintf(buffer, sizeof(buffer), "Error: Failed to convert XML to JSON.\n");
         write(client_fd, buffer, strlen(buffer));
+        free(file_content); // Free the allocated memory for file content
         return;
     }
 
@@ -200,7 +250,12 @@ void handle_upload(int client_fd, const char *client_file_path) {
     write(client_fd, buffer, strlen(buffer));
     fsync(client_fd);
     printf("Debug: File uploaded and converted successfully.\n");
+
+    // Free the allocated memory for file content
+    free(file_content);
 }
+
+
 void handle_download(int client_fd, const char *download_dir) {
     char buffer[MAX_PATH];
     FILE *file;
