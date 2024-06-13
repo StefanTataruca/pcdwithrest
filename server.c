@@ -125,7 +125,7 @@ char *load_file_content(const char *file_path) {
         return NULL;
     }
 
-    // Seek to the end of the file to determine the file size
+    // Seek to the end 
     fseek(file, 0, SEEK_END);
     int size = ftell(file);
     fseek(file, 0, SEEK_SET);
@@ -157,8 +157,10 @@ char *load_file_content(const char *file_path) {
 }
 
 
-void handle_upload(int client_fd, const char *authenticated_username, const char *client_file_path) {
+void handle_upload(int client_fd,const char *authenticated_username, const char *client_file_path) {
     char buffer[BUFFER_SIZE];
+    FILE *file;
+    ssize_t bytes_read;
     char file_name[BUFFER_SIZE];
     char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
 
@@ -178,7 +180,7 @@ void handle_upload(int client_fd, const char *authenticated_username, const char
 
     printf("Debug: Starting file upload: %s\n", full_path);
 
-    FILE *file = fopen(full_path, "wb");
+    file = fopen(full_path, "wb");
     if (!file) {
         perror("Failed to open file");
         snprintf(buffer, sizeof(buffer), "Error: Failed to open file on server.\n");
@@ -187,28 +189,24 @@ void handle_upload(int client_fd, const char *authenticated_username, const char
         return;
     }
 
-    ssize_t bytes_read;
-    while ((bytes_read = read(client_fd, buffer, sizeof(buffer))) > 0) {
+    // Send acknowledgment to the client
+    snprintf(buffer, sizeof(buffer), "ACK");
+    write(client_fd, buffer, strlen(buffer));
+
+    while ((bytes_read = read(client_fd, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
 
         // Check if the buffer contains the end-of-file marker
-        if (strstr(buffer, "END_OF_FILE") != NULL) {
+        char *eof_pos = strstr(buffer, "END_OF_FILE");
+        if (eof_pos != NULL) {
             // Ensure that no data beyond "END_OF_FILE" is written to the file
-            char *eof_pos = strstr(buffer, "END_OF_FILE");
-            if (eof_pos != buffer) {
-                fwrite(buffer, 1, eof_pos - buffer, file); // Write data before "END_OF_FILE"
+            size_t eof_index = eof_pos - buffer;
+            if (eof_index > 0) {
+                fwrite(buffer, 1, eof_index, file); // Write data before "END_OF_FILE"
             }
             break;
-        }
-
-        // Write the buffer to file
-        if (fwrite(buffer, 1, bytes_read, file) != bytes_read) {
-            perror("Failed to write to file");
-            fclose(file);
-            snprintf(buffer, sizeof(buffer), "Error: Failed to write to file on server.\n");
-            write(client_fd, buffer, strlen(buffer));
-            free(client_file_path_copy);  // Free the allocated memory
-            return;
+        } else {
+            fwrite(buffer, 1, bytes_read, file); // Write full buffer
         }
     }
 
@@ -223,35 +221,18 @@ void handle_upload(int client_fd, const char *authenticated_username, const char
 
     fclose(file);
     free(client_file_path_copy);  // Free the allocated memory
-
-    // Load file content into dynamically allocated memory
-    char *file_content = load_file_content(full_path);
-    if (!file_content) {
-        snprintf(buffer, sizeof(buffer), "Error: Failed to load file content into memory.\n");
-        write(client_fd, buffer, strlen(buffer));
-        return;
-    }
-
-    // Process the file content (e.g., convert XML to JSON)
-    printf("Debug: File content loaded into memory. Processing...\n");
-
-    // Extract the base name without the extension for the JSON file naming
-    char *dot_position = strrchr(file_name, '.');
-    if (dot_position) {
-        *dot_position = '\0';  // Remove the extension
-    }
+    printf("Debug: Finished receiving file. Converting...\n");
 
     char json_file_path[MAX_FILE_PATH];
+    char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
     snprintf(json_file_path, sizeof(json_file_path), "./converted_%s_%s.json", authenticated_username, file_name);
 
     // Assume convert_xml_to_json is a function defined elsewhere
     if (convert_xml_to_json(full_path, json_file_path) != 0) {
         snprintf(buffer, sizeof(buffer), "Error: Failed to convert XML to JSON.\n");
         write(client_fd, buffer, strlen(buffer));
-        free(file_content); // Free the allocated memory for file content
         return;
     }
-
     // Add log message for conversion
     char log_msg[2048]; // Increased buffer size
     snprintf(log_msg, sizeof(log_msg), "User %s converted file %s to %s", authenticated_username, full_path, json_file_path);
@@ -264,15 +245,10 @@ void handle_upload(int client_fd, const char *authenticated_username, const char
     write(client_fd, buffer, strlen(buffer));
     fsync(client_fd);
     printf("Debug: File uploaded and converted successfully.\n");
-
-    // Free the allocated memory for file content
-    free(file_content);
-
     // Add log message for upload
     snprintf(log_msg, sizeof(log_msg), "User %s uploaded file %s", authenticated_username, client_file_path);
     log_message(log_msg);
 }
-
 void handle_download(int client_fd, const char *username, const char *download_dir) {
     char buffer[MAX_PATH];
     FILE *file;

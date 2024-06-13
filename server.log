@@ -474,3 +474,10 @@
 2024-06-13 02:45:54: User admin2 logged in as admin
 2024-06-13 02:46:20: User admin logged in as admin
 2024-06-13 02:46:44: User admin2 logged in as admin
+2024-06-13 07:48:23: User lau logged in as simple
+2024-06-13 07:48:27: User lau converted file ./try2.xml to ./converted_lau_try2.json
+2024-06-13 07:48:27: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 07:51:30: User lau logged in as simple
+2024-06-13 07:51:33: User lau converted file ./try2.xml to ./converted_lau_try2.json
+2024-06-13 07:51:33: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 07:51:40: User lau downloaded file converted_lau_try2.json
