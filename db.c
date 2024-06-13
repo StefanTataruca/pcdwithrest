@@ -195,7 +195,6 @@ int db_fetch_all_users(char *buffer, int buffer_size) {
     }
 
     int len = 0;
-    //len += snprintf(buffer + len, buffer_size - len, "Username\n");
     
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const char *username = (const char *)sqlite3_column_text(stmt, 0);

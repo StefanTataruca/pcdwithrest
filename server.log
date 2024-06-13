@@ -358,6 +358,7 @@
 2024-06-12 16:35:24: User lau logged in as simple
 2024-06-12 16:35:47: User lau logged in as simple
 2024-06-12 16:54:22: User lau logged in as simple
+<<<<<<< HEAD
 =======
 =======
 =======
@@ -521,3 +522,124 @@
 2024-06-13 07:31:36: User admin logged in as admin
 2024-06-13 07:34:29: User lau logged in as simple
 2024-06-13 07:37:45: User lau logged in as simple
+=======
+2024-06-12 17:06:36: User lau logged in as simple
+2024-06-12 17:07:49: User lau logged in as simple
+2024-06-12 17:12:53: User lau logged in as simple
+2024-06-12 17:29:20: User lau logged in as simple
+2024-06-12 17:34:28: User lau logged in as simple
+2024-06-12 17:56:59: User lau logged in as simple
+2024-06-12 18:02:08: User lau logged in as simple
+2024-06-12 18:02:34: User lau logged in as simple
+2024-06-12 18:05:34: User lau logged in as simple
+2024-06-12 18:08:39: User lau logged in as simple
+2024-06-12 18:16:32: User lau logged in as simple
+2024-06-12 18:22:04: User lau logged in as simple
+2024-06-12 18:22:35: User lau logged in as simple
+2024-06-12 18:35:32: User admin1 logged in as rest
+2024-06-12 21:56:07: User lau logged in as simple
+2024-06-12 22:52:13: User lau logged in as simple
+2024-06-12 23:07:48: User admin logged in as admin
+2024-06-12 23:08:02: File /home/tstefan/upload_dir/try1.xml deleted
+2024-06-12 23:08:43: File /home/tstefan/upload_dir/converted_try1.json deleted
+2024-06-12 23:11:36: User lau logged in as rest
+2024-06-12 23:11:41: User Radu logged in as rest
+2024-06-12 23:14:30: User admin1 logged in as rest
+2024-06-12 23:14:34: User lau logged in as rest
+2024-06-12 23:14:50: User admin logged in as admin
+2024-06-12 23:19:24: User lau logged in as simple
+2024-06-12 23:19:35: User lau logged in as simple
+2024-06-12 23:19:47: User relu logged in as simple
+2024-06-12 23:26:31: User lau logged in as simple
+2024-06-12 23:27:52: User lau logged in as simple
+2024-06-12 23:31:34: User lau logged in as simple
+2024-06-12 23:35:54: User lau logged in as simple
+2024-06-12 23:39:45: User lau logged in as simple
+2024-06-13 00:13:41: User lau logged in as simple
+2024-06-13 00:14:05: User  converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:14:05: User  uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:14:35: User  downloaded file converted_(null).json
+2024-06-13 00:22:22: User lau logged in as simple
+2024-06-13 00:22:26: User /home/tstefan/upload_dir/try2.xml converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:22:26: User /home/tstefan/upload_dir/try2.xml uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:22:46: User /home/tstefan/upload_dir downloaded file converted_(null).json
+2024-06-13 00:26:35: User lau logged in as simple
+2024-06-13 00:26:39: User /home/tstefan/upload_dir/try2.xml converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:26:39: User /home/tstefan/upload_dir/try2.xml uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:29:33: User lau logged in as simple
+2024-06-13 00:29:44: User /home/tstefan/upload_dir/try2.xml converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:29:44: User /home/tstefan/upload_dir/try2.xml uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:33:08: User lau logged in as simple
+2024-06-13 00:33:42: User /home/tstefan/upload_dir/try2.xml converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:33:42: User /home/tstefan/upload_dir/try2.xml uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:39:10: User buna logged in as simple
+2024-06-13 00:39:16: User relu logged in as simple
+2024-06-13 00:39:25: User lala logged in as simple
+2024-06-13 00:39:33: User proba logged in as simple
+2024-06-13 00:39:42: User ratusca logged in as simple
+2024-06-13 00:39:53: User Laurentiu logged in as simple
+2024-06-13 00:40:02: User Radu logged in as simple
+2024-06-13 00:40:10: User qq logged in as simple
+2024-06-13 00:40:15: User pp logged in as simple
+2024-06-13 00:40:20: User ana logged in as simple
+2024-06-13 00:40:30: User w logged in as simple
+2024-06-13 00:40:56: User gg logged in as simple
+2024-06-13 00:41:07: User /home/tstefan/upload_dir/try2.xml converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:41:07: User /home/tstefan/upload_dir/try2.xml uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:42:40: User lau logged in as simple
+2024-06-13 00:42:56: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:42:56: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:43:39: User lau logged in as simple
+2024-06-13 00:43:50: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 00:43:50: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 00:44:15: User lau logged in as simple
+2024-06-13 01:09:34: User lau logged in as simple
+2024-06-13 01:09:37: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 01:09:37: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:10:41: User lau downloaded file converted_(null).json
+2024-06-13 01:21:15: User lau logged in as simple
+2024-06-13 01:21:31: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 01:21:31: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:29:03: User lau logged in as simple
+2024-06-13 01:29:07: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 01:29:07: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:30:09: User lau logged in as simple
+2024-06-13 01:30:20: User lau converted file ./try2.xml to ./converted_(null).json
+2024-06-13 01:30:20: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:31:03: User lau logged in as simple
+2024-06-13 01:31:06: User lau converted file ./try2.xml to ./converted_lau(null).json
+2024-06-13 01:31:06: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:32:05: User Radu logged in as simple
+2024-06-13 01:32:08: User Radu converted file ./try2.xml to ./converted_Radu(null).json
+2024-06-13 01:32:08: User Radu uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:32:54: User lau logged in as simple
+2024-06-13 01:32:57: User lau converted file ./try2.xml to ./converted_lau_(null).json
+2024-06-13 01:32:57: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:33:15: User Radu logged in as simple
+2024-06-13 01:33:19: User Radu converted file ./try2.xml to ./converted_Radu_(null).json
+2024-06-13 01:33:19: User Radu uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:39:03: User lau logged in as simple
+2024-06-13 01:39:07: User lau converted file ./try2.xml to ./converted_lau_.json
+2024-06-13 01:39:07: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:40:07: User lau logged in as simple
+2024-06-13 01:40:12: User lau converted file ./try2.xml to ./converted_lau_.json
+2024-06-13 01:40:12: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:43:39: User lau logged in as simple
+2024-06-13 01:45:25: User lau logged in as simple
+2024-06-13 01:46:05: User lau logged in as simple
+2024-06-13 01:46:13: User lau converted file ./try2.xml to ./converted_lau_.json
+2024-06-13 01:46:13: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:46:49: User lau logged in as simple
+2024-06-13 01:48:01: User Radu logged in as simple
+2024-06-13 01:48:07: User Radu converted file ./try2.xml to ./converted_Radu_.json
+2024-06-13 01:48:07: User Radu uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 01:48:20: User Radu downloaded file converted_Radu_.json
+2024-06-13 02:40:44: User lau logged in as simple
+2024-06-13 02:41:54: User lau converted file ./try2.xml to ./converted_lau_.json
+2024-06-13 02:41:54: User lau uploaded file /home/tstefan/upload_dir/try2.xml
+2024-06-13 02:42:00: User lau downloaded file converted_lau_.json
+2024-06-13 02:44:08: User admin logged in as admin
+2024-06-13 02:45:54: User admin2 logged in as admin
+2024-06-13 02:46:20: User admin logged in as admin
+2024-06-13 02:46:44: User admin2 logged in as admin
+>>>>>>> 3ea3a4b5d7c7e62a58d9b8f5c492e1d68bd30368

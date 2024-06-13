@@ -8,15 +8,14 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <dirent.h>
 
 #define BUFFER_SIZE 1035
 #define SERVER_PORT 12345
 #define SERVER_IP "127.0.0.1"
 #define MAX_FILE_PATH 512
 
-int is_logged_in = 0; // Global variable to track login status
+int is_logged_in = 0;
 
 void trim_whitespace(char *str);
 void trim_trailing_slash(char *str);
@@ -28,6 +27,7 @@ void register_user();
 void upload_xml(int socket_fd);
 void download_json(int socket_fd, const char *download_dir);
 void listen_for_messages(int socket_fd);
+void search_in_file(int socket_fd);
 
 void trim_whitespace(char *str) {
     char *end;
@@ -57,7 +57,8 @@ void show_action_menu() {
     } else {
         printf("1. Upload XML file\n");
         printf("2. Download converted JSON file\n");
-        printf("3. Exit\n");
+        printf("3. Search in file\n");
+        printf("4. Exit\n");
     }
     fflush(stdout);
 }
@@ -105,7 +106,7 @@ void login(int socket_fd) {
     printf("%s\n", response);
 
     if (strcmp(response, "Login successful") == 0) {
-        is_logged_in = 1;  // Set login flag to true
+        is_logged_in = 1;
     } else {
         printf("Login failed. Try again.\n");
         close(socket_fd);
@@ -133,12 +134,12 @@ void register_user() {
     read(socket_fd, response, BUFFER_SIZE);
     printf("%s\n", response);
 
-    if (strcmp(response, "Registration successful") == 0) {
+    if (strcmp(response, "User registered successfully") == 0) {
         printf("Please log in with your new credentials.\n");
         close(socket_fd);
         socket_fd = connect_to_server();
         if (socket_fd != -1) {
-            login(socket_fd);  // Automatically prompt for login after registration
+            login(socket_fd);
         }
     } else {
         close(socket_fd);
@@ -194,7 +195,6 @@ void upload_xml(int socket_fd) {
     write(socket_fd, buffer, strlen(buffer));
     printf("Debug: Finished sending file. Waiting for server response...\n");
 
-    // Wait for response from server
     ssize_t bytes_received = read(socket_fd, buffer, BUFFER_SIZE);
     if (bytes_received > 0) {
         buffer[bytes_received] = '\0';
@@ -219,17 +219,16 @@ void download_json(int socket_fd, const char *download_dir) {
     write(socket_fd, buffer, strlen(buffer));
     printf("Debug: Path sent to server: %s\n", buffer);
 
-    // Assume the server sends the filename first
     bytes_received = read(socket_fd, buffer, BUFFER_SIZE);
     if (bytes_received <= 0) {
         perror("Failed to receive filename from server");
         return;
     }
-    buffer[bytes_received] = '\0'; // Null-terminate the received data
+    buffer[bytes_received] = '\0';
     printf("Debug: Filename received from server: %s\n", buffer);
 
     int len = snprintf(download_path, sizeof(download_path), "%s/%s", directory, buffer);
-    if (len >= sizeof(download_path) - 1) { // Check if the output was truncated
+    if (len >= sizeof(download_path) - 1) {
         perror("Failed to create download path: buffer too small");
         return;
     }
@@ -241,8 +240,8 @@ void download_json(int socket_fd, const char *download_dir) {
     }
 
     while ((bytes_received = read(socket_fd, buffer, sizeof(buffer) - 1)) > 0) {
-        buffer[bytes_received] = '\0'; // Null-terminate the buffer to safely use strstr
-        printf("Debug: Received data chunk: %s\n", buffer); // Debug print
+        buffer[bytes_received] = '\0';
+        printf("Debug: Received data chunk: %s\n", buffer);
 
         char *eof_pos = strstr(buffer, "END_OF_FILE");
         if (eof_pos != NULL) {
@@ -266,6 +265,84 @@ void download_json(int socket_fd, const char *download_dir) {
     }
 }
 
+void list_json_files(char **files, int *num_files) {
+    DIR *dir;
+    struct dirent *ent;
+    int count = 0;
+
+    if ((dir = opendir(".")) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            if (strstr(ent->d_name, ".json") != NULL) {
+                files[count] = strdup(ent->d_name);
+                count++;
+            }
+        }
+        closedir(dir);
+    } else {
+        perror("Could not open directory");
+    }
+
+    *num_files = count;
+}
+
+void search_in_file(int socket_fd) {
+    char buffer[BUFFER_SIZE];
+    char file_path[MAX_FILE_PATH];
+    char search_path[BUFFER_SIZE];
+    char *files[100];
+    int num_files = 0;
+
+    // List JSON files in the current directory
+    list_json_files(files, &num_files);
+
+    if (num_files == 0) {
+        printf("No JSON files found in the current directory.\n");
+        return;
+    }
+
+    printf("Select a JSON file to search in:\n");
+    for (int i = 0; i < num_files; i++) {
+        printf("%d. %s\n", i + 1, files[i]);
+    }
+
+    printf("Enter the number corresponding to your choice: ");
+    fgets(buffer, sizeof(buffer), stdin);
+    int file_choice = atoi(buffer) - 1;
+
+    if (file_choice < 0 || file_choice >= num_files) {
+        printf("Invalid choice.\n");
+        return;
+    }
+
+    strncpy(file_path, files[file_choice], MAX_FILE_PATH - 1);
+    file_path[MAX_FILE_PATH - 1] = '\0'; // Ensure null-termination
+
+    printf("Enter the search path (e.g., root.element): ");
+    fgets(search_path, sizeof(search_path), stdin);
+    trim_whitespace(search_path);
+
+    // Clear the buffer and safely build the command string in parts
+    memset(buffer, 0, BUFFER_SIZE);
+    strncpy(buffer, "SEARCH_JSON ", BUFFER_SIZE - 1);
+    strncat(buffer, file_path, BUFFER_SIZE - strlen(buffer) - 1);
+    strncat(buffer, " ", BUFFER_SIZE - strlen(buffer) - 1);
+    strncat(buffer, search_path, BUFFER_SIZE - strlen(buffer) - 1);
+
+    write(socket_fd, buffer, strlen(buffer));
+
+    ssize_t bytes_received = read(socket_fd, buffer, BUFFER_SIZE - 1);
+    if (bytes_received > 0) {
+        buffer[bytes_received] = '\0';
+        printf("Search results:\n%s\n", buffer);
+    } else {
+        perror("Error reading from server");
+    }
+
+    for (int i = 0; i < num_files; i++) {
+        free(files[i]);
+    }
+}
+
 void listen_for_messages(int socket_fd) {
     char buffer[BUFFER_SIZE];
     while (1) {
@@ -283,8 +360,6 @@ void listen_for_messages(int socket_fd) {
             close(socket_fd);
             exit(0);
         }
-
-        // Handle other messages from server if needed
     }
 }
 
@@ -330,6 +405,10 @@ int main() {
                     download_json(socket_fd, download_dir);
                 }
             } else if (strcmp(choice, "3") == 0) {
+                if (socket_fd != -1) {
+                    search_in_file(socket_fd);
+                }
+            } else if (strcmp(choice, "4") == 0) {
                 if (socket_fd != -1) close(socket_fd);
                 exit(0);
             } else {
