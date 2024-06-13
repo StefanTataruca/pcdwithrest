@@ -28,10 +28,15 @@
 #define MAX_FILE_PATH 512
 #define MAX_PATH 1024
 #define LARGE_BUFFER_SIZE 8192
+#define MAX_ADMIN_THREADS 5
+#define MAX_USER_THREADS 10
 char converted_json_filename[MAX_FILE_PATH];
 void *handle_client(void *arg);
 void trim_trailing_slash(char *str);
 void cleanup_resources();
+void handle_upload(int client_fd, const char *username, const char *client_file_path);
+void handle_download(int client_fd, const char *username, const char *download_dir);
+
 void handle_signal(int signal);
 typedef struct {
     char username[BUFFER_SIZE];
@@ -113,13 +118,52 @@ static int answer_to_connection(void *cls, struct MHD_Connection *connection, co
     return MHD_NO;
 }
 
-void handle_upload(int client_fd, const char *client_file_path) {
+char *load_file_content(const char *file_path) {
+    FILE *file = fopen(file_path, "rb");
+    if (!file) {
+        perror("Failed to open file");
+        return NULL;
+    }
+
+    // Seek to the end of the file to determine the file size
+    fseek(file, 0, SEEK_END);
+    int size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Allocate memory for the file content
+    char *buffer = malloc(size + 1); // +1 for the null terminator
+    if (!buffer) {
+        perror("Failed to allocate memory");
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the file content into the buffer
+    size_t read_size = fread(buffer, 1, size, file);
+    if (read_size != size) {
+        perror("Failed to read file content");
+        free(buffer);
+        fclose(file);
+        return NULL;
+    }
+
+    // Null-terminate the buffer
+    buffer[size] = '\0';
+
+    // Close the file
+    fclose(file);
+
+    return buffer;
+}
+
+
+void handle_upload(int client_fd, const char *authenticated_username, const char *client_file_path) {
     char buffer[BUFFER_SIZE];
     FILE *file;
     ssize_t bytes_read;
     char file_name[BUFFER_SIZE];
     char *client_file_path_copy = strdup(client_file_path);  // Create a mutable copy of client_file_path
-    
+
     if (client_file_path_copy == NULL) {
         perror("Failed to allocate memory");
         snprintf(buffer, sizeof(buffer), "Error: Server memory allocation failed.\n");
@@ -145,27 +189,24 @@ void handle_upload(int client_fd, const char *client_file_path) {
         return;
     }
 
+    // Send acknowledgment to the client
+    snprintf(buffer, sizeof(buffer), "ACK");
+    write(client_fd, buffer, strlen(buffer));
+
     while ((bytes_read = read(client_fd, buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate to safely use strstr
 
         // Check if the buffer contains the end-of-file marker
-        if (strstr(buffer, "END_OF_FILE") != NULL) {
+        char *eof_pos = strstr(buffer, "END_OF_FILE");
+        if (eof_pos != NULL) {
             // Ensure that no data beyond "END_OF_FILE" is written to the file
-            char *eof_pos = strstr(buffer, "END_OF_FILE");
-            if (eof_pos != buffer) {
-                fwrite(buffer, 1, eof_pos - buffer, file); // Write data before "END_OF_FILE"
+            size_t eof_index = eof_pos - buffer;
+            if (eof_index > 0) {
+                fwrite(buffer, 1, eof_index, file); // Write data before "END_OF_FILE"
             }
             break;
-        }
-
-        // Write the buffer to file
-        if (fwrite(buffer, 1, bytes_read, file) != bytes_read) {
-            perror("Failed to write to file");
-            fclose(file);
-            snprintf(buffer, sizeof(buffer), "Error: Failed to write to file on server.\n");
-            write(client_fd, buffer, strlen(buffer));
-            free(client_file_path_copy);  // Free the allocated memory
-            return;
+        } else {
+            fwrite(buffer, 1, bytes_read, file); // Write full buffer
         }
     }
 
@@ -184,7 +225,7 @@ void handle_upload(int client_fd, const char *client_file_path) {
 
     char json_file_path[MAX_FILE_PATH];
     char *file_name_without_ext = strtok(file_name, "."); // Remove the extension
-    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s.json", file_name_without_ext);
+    snprintf(json_file_path, sizeof(json_file_path), "./converted_%s_%s.json", authenticated_username, file_name);
 
     // Assume convert_xml_to_json is a function defined elsewhere
     if (convert_xml_to_json(full_path, json_file_path) != 0) {
@@ -192,16 +233,22 @@ void handle_upload(int client_fd, const char *client_file_path) {
         write(client_fd, buffer, strlen(buffer));
         return;
     }
-
+    char log_msg[2048]; // Increased buffer size
+    snprintf(log_msg, sizeof(log_msg), "User %s converted file %s to %s", authenticated_username, full_path, json_file_path);
+    log_message(log_msg);
     // Store the converted JSON filename in the global variable
+
     snprintf(converted_json_filename, sizeof(converted_json_filename), "converted_%s.json", file_name_without_ext);
 
     snprintf(buffer, sizeof(buffer), "Success: File uploaded and converted successfully.\n");
     write(client_fd, buffer, strlen(buffer));
     fsync(client_fd);
     printf("Debug: File uploaded and converted successfully.\n");
+    snprintf(log_msg, sizeof(log_msg), "User %s uploaded file %s", authenticated_username, client_file_path);
+    log_message(log_msg);
 }
-void handle_download(int client_fd, const char *download_dir) {
+
+void handle_download(int client_fd, const char *username, const char *download_dir) {
     char buffer[MAX_PATH];
     FILE *file;
     ssize_t bytes_read;
@@ -236,12 +283,28 @@ void handle_download(int client_fd, const char *download_dir) {
 
     fclose(file);
     printf("Debug: Entire file sent to client.\n");
+    
+
+    //printf("%s %s\n", temp_download_path, download_dir);
+
+    /*if (copy_file(temp_download_path, download_dir) == 0) {
+        snprintf(buffer, BUFFER_SIZE, "Logs successfully saved to %s.", dir_path);
+    } else {
+        snprintf(buffer, BUFFER_SIZE, "Failed to save logs to %s.", dir_path);
+    }*/
+
+    // Add log message for download
+    char log_msg[2048]; // Increased buffer size
+    snprintf(log_msg, sizeof(log_msg), "User %s downloaded file %s", username, converted_json_filename);
+    log_message(log_msg);
 
     // Send EOF marker
     snprintf(buffer, sizeof(buffer), "END_OF_FILE");
     write(client_fd, buffer, strlen(buffer) + 1);
-    printf("Debug: Sent EOF marker to client.\n");
+    printf("Debug: Sent EOF marker to client. on dir: %s\n", download_dir);
 }
+
+
 
 void disconnect_user(const char *username) {
     pthread_mutex_lock(&users_mutex);
@@ -383,7 +446,7 @@ void *handle_client(void *arg) {
     int client_fd = *((int *)arg);
     int is_unix_socket = *((int *)(arg + sizeof(int)));
     free(arg);
-
+    char authenticated_username[BUFFER_SIZE];
     char buffer[BUFFER_SIZE];
     char file_path[BUFFER_SIZE];
     char download_path[BUFFER_SIZE];
@@ -426,6 +489,8 @@ void *handle_client(void *arg) {
                     add_user(username, client_fd);
                     char log_msg[BUFFER_SIZE];
                     snprintf(log_msg, sizeof(log_msg), "User %.100s logged in as %s", username, is_unix_socket ? "admin" : "simple");
+                    strcpy(authenticated_username, username);
+                    printf("Debug: username = %s\n", authenticated_username);
                     log_message(log_msg);
                 } else {
                     snprintf(buffer, sizeof(buffer), "Access denied");
@@ -456,10 +521,11 @@ void *handle_client(void *arg) {
             handle_unblock_user(client_fd, username);
         } else if (strcmp(command, "UPLOAD_XML") == 0) {
             sscanf(buffer + strlen("UPLOAD_XML "), "%255s", file_path); // Extract file_path
-            handle_upload(client_fd, file_path);
+            printf("Debug: username = %s\n", authenticated_username);
+            handle_upload(client_fd, authenticated_username, file_path);
         } else if (strcmp(command, "DOWNLOAD_JSON") == 0) {
             sscanf(buffer + strlen("DOWNLOAD_JSON "), "%255s", download_path); // Extract download_path
-            handle_download(client_fd, download_path);
+            handle_download(client_fd, authenticated_username, download_path);
         } else if (strcmp(command, "VIEW_USERS") == 0) {
             view_connected_users(buffer);
             write(client_fd, buffer, strlen(buffer) + 1);

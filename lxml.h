@@ -116,6 +116,8 @@ int XMLDocument_load(XMLDocument* doc, const char* path) {
     int size = ftell(file); /* Get the file size */
     fseek(file, 0, SEEK_SET); /* Reset the position to the beginning of the file */
 
+    fprintf(stdout, "File size: %ld\n", ftell(file));
+
     char* buffer = (char*) malloc(sizeof(char) * size + 1); /* Allocate the memory for the buffer with the file size */
     
     if (!buffer) { /* If the momory could not be allocated to the buffer, print an error message and exit */

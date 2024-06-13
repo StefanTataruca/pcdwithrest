@@ -1,0 +1,20 @@
+{
+	"version":	"@\u0006«\n6",
+	"encoding":	"\u0010üª\n6",
+	"root":	{
+		"person":	[{
+				"name":	"John Doe",
+				"age":	"30",
+				"email":	"john.doe@example.com"
+			}, {
+				"name":	"Jane Smith",
+				"age":	"25",
+				"email":	"jane.smith@example.com"
+			}],
+		"book":	{
+			"title":	"The Adventure Begins",
+			"author":	"Robert Johnson",
+			"year":	"2022"
+		}
+	}
+}

@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 2024-06-07 23:26:07: User lau logged in as simple
 2024-06-07 23:26:25: User admin logged in as admin
 2024-06-08 13:42:54: Server is running...
@@ -344,8 +345,10 @@
 2024-06-12 13:59:49: File try2.xml deleted
 2024-06-12 14:00:19: File converted_try2.json deleted
 2024-06-12 14:02:08: User admin logged in as admin
+<<<<<<< Updated upstream
 2024-06-12 15:38:34: User lau logged in as simple
 2024-06-12 15:49:51: User lau logged in as simple
+<<<<<<< Updated upstream
 2024-06-12 15:54:36: User lau logged in as simple
 2024-06-12 16:13:49: User lau logged in as simple
 2024-06-12 16:30:02: User lau logged in as simple
@@ -355,3 +358,166 @@
 2024-06-12 16:35:24: User lau logged in as simple
 2024-06-12 16:35:47: User lau logged in as simple
 2024-06-12 16:54:22: User lau logged in as simple
+=======
+=======
+=======
+2024-06-12 13:26:48: User lau logged in as simple
+2024-06-12 13:28:49: User admin logged in as admin
+2024-06-12 14:00:45: User admin logged in as admin
+2024-06-12 14:09:30: User admin logged in as admin
+2024-06-12 14:10:11: User admin logged in as admin
+2024-06-12 14:11:30: User admin logged in as admin
+2024-06-12 14:11:55: User admin logged in as admin
+2024-06-12 14:19:14: User admin logged in as admin
+2024-06-12 14:20:11: User admin logged in as admin
+2024-06-12 14:20:39: User admin logged in as admin
+2024-06-12 14:21:22: User admin logged in as admin
+2024-06-12 14:27:47: User admin logged in as admin
+2024-06-12 14:28:54: User admin logged in as admin
+2024-06-12 14:30:14: User admin logged in as admin
+2024-06-12 14:31:57: User admin logged in as admin
+2024-06-12 14:32:07: User admin logged in as admin
+2024-06-12 14:35:01: User admin logged in as admin
+2024-06-12 15:19:49: User admin logged in as admin
+2024-06-12 15:20:22: User lau logged in as simple
+2024-06-12 15:20:49: User admin logged in as admin
+2024-06-12 15:21:02: User Radu logged in as simple
+2024-06-12 15:21:47: User admin2 logged in as admin
+2024-06-12 15:23:41: User Radu logged in as simple
+2024-06-12 15:24:51: User Radu logged in as simple
+2024-06-12 15:25:31: User Radu logged in as simple
+>>>>>>> Stashed changes
+2024-06-12 15:27:35: User Radu logged in as simple
+2024-06-12 15:29:43: User Radu logged in as simple
+2024-06-12 15:30:32: User Radu logged in as simple
+2024-06-12 15:38:41: User lau logged in as simple
+2024-06-12 15:39:11: User admin logged in as admin
+2024-06-12 15:41:27: User lau logged in as simple
+2024-06-12 15:42:48: User lau logged in as simple
+2024-06-12 15:43:45: User lau logged in as simple
+2024-06-12 15:48:32: User lau logged in as simple
+2024-06-12 15:50:04: User lau logged in as simple
+2024-06-12 15:55:25: User lau logged in as simple
+>>>>>>> Stashed changes
+2024-06-12 15:56:40: User lau logged in as simple
+2024-06-12 15:57:53: User lau logged in as simple
+2024-06-12 15:58:42: User admin logged in as admin
+2024-06-12 16:01:07: User lau logged in as simple
+2024-06-12 16:12:43: User lau logged in as simple
+2024-06-12 16:12:58: User admin logged in as admin
+2024-06-12 16:13:10: User admin logged in as admin
+2024-06-12 16:13:17: User lau logged in as simple
+2024-06-12 16:15:18: User lau logged in as simple
+2024-06-12 16:16:03: User lau logged in as simple
+2024-06-12 16:16:21: User lau logged in as simple
+>>>>>>> Stashed changes
+2024-06-12 21:05:58: User admin logged in as admin
+2024-06-12 21:06:47: User admin logged in as admin
+2024-06-12 21:09:49: User admin logged in as admin
+2024-06-12 21:11:49: User admin logged in as admin
+2024-06-12 21:12:21: User admin logged in as admin
+2024-06-12 21:13:23: User admin logged in as admin
+2024-06-12 21:13:45: User admin logged in as admin
+2024-06-12 21:14:16: User lau logged in as simple
+2024-06-12 21:15:14: User lau logged in as simple
+2024-06-12 21:20:57: User lau logged in as simple
+2024-06-12 21:21:42: User lau logged in as simple
+2024-06-12 21:22:30: User lau logged in as simple
+2024-06-12 21:24:30: User lau logged in as simple
+2024-06-12 21:26:58: User lau logged in as simple
+2024-06-12 21:31:18: User admin logged in as admin
+2024-06-12 21:31:28: User lau logged in as simple
+2024-06-12 21:33:24: User lau logged in as simple
+2024-06-12 21:34:00: User lau logged in as simple
+2024-06-12 21:47:25: User admin logged in as admin
+2024-06-12 21:52:34: User admin logged in as admin
+2024-06-12 21:55:32: User admin2 logged in as admin
+2024-06-12 21:59:24: User admin logged in as admin
+2024-06-12 22:01:37: User admin logged in as admin
+2024-06-12 22:03:45: User admin logged in as admin
+2024-06-12 22:04:12: User admin logged in as admin
+2024-06-12 22:19:41: User admin logged in as admin
+2024-06-12 22:30:12: User admin logged in as admin
+2024-06-12 22:32:01: User admin logged in as admin
+2024-06-12 22:39:03: User admin logged in as admin
+2024-06-12 22:39:56: User admin logged in as admin
+2024-06-12 22:45:36: User admin logged in as admin
+2024-06-12 22:47:43: User admin logged in as admin
+2024-06-12 22:49:39: User admin logged in as admin
+2024-06-12 22:50:42: User admin logged in as admin
+2024-06-12 22:51:44: User admin logged in as admin
+2024-06-12 22:54:03: User admin logged in as admin
+2024-06-12 22:57:53: User admin logged in as admin
+2024-06-12 22:59:23: User admin logged in as admin
+2024-06-12 23:11:47: User admin logged in as admin
+2024-06-12 23:29:07: User admin logged in as admin
+2024-06-12 23:33:47: User admin logged in as admin
+2024-06-12 23:35:08: User admin logged in as admin
+2024-06-12 23:35:55: User admin logged in as admin
+2024-06-12 23:36:02: File /mnt/c/Users/Horatiu/Desktop/sample1.xml deleted
+2024-06-12 23:36:40: File /mnt/c/Users/Horatiu/Desktop/test.xml deleted
+2024-06-12 23:37:55: User lau logged in as simple
+2024-06-12 23:44:34: User lau logged in as simple
+2024-06-12 23:49:47: User admin logged in as admin
+2024-06-12 23:49:58: User lau logged in as simple
+2024-06-13 01:11:37: User lau logged in as simple
+2024-06-13 01:12:47: User lau logged in as simple
+2024-06-13 01:13:31: User lau logged in as simple
+2024-06-13 01:15:56: User lau logged in as simple
+2024-06-13 01:16:36: User lau logged in as simple
+2024-06-13 01:16:54: User lau logged in as simple
+2024-06-13 01:18:59: User lau logged in as simple
+2024-06-13 01:21:14: User lau logged in as simple
+2024-06-13 01:22:06: User lau logged in as simple
+2024-06-13 01:23:08: User lau logged in as simple
+2024-06-13 01:30:04: User lau logged in as simple
+2024-06-13 01:41:26: User lau logged in as simple
+2024-06-13 01:46:52: User lau logged in as simple
+2024-06-13 01:49:15: User lau logged in as simple
+2024-06-13 01:53:26: User lau logged in as simple
+2024-06-13 01:54:39: User Radu logged in as simple
+2024-06-13 02:07:08: User lau logged in as simple
+2024-06-13 02:07:10: User lau converted file ./test3.xml to ./converted_lau_test3.json
+2024-06-13 02:07:10: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test3.xml
+2024-06-13 02:07:16: User lau downloaded file converted_test3.json
+2024-06-13 02:07:46: User lau logged in as simple
+2024-06-13 02:07:48: User lau converted file ./test3.xml to ./converted_lau_test3.json
+2024-06-13 02:07:48: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test3.xml
+2024-06-13 02:07:57: User lau downloaded file converted_test3.json
+2024-06-13 02:09:35: User admin logged in as admin
+2024-06-13 02:11:41: User lau logged in as simple
+2024-06-13 02:11:45: User lau converted file ./test2.xml to ./converted_lau_test2.json
+2024-06-13 02:11:45: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test2.xml
+2024-06-13 02:11:51: User lau downloaded file converted_test2.json
+2024-06-13 02:12:56: User lau logged in as simple
+2024-06-13 02:13:01: User lau converted file ./test2.xml to ./converted_lau_test2.json
+2024-06-13 02:13:01: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test2.xml
+2024-06-13 02:13:13: User lau downloaded file converted_test2.json
+2024-06-13 02:14:13: User lau logged in as simple
+2024-06-13 02:14:17: User lau converted file ./test3.xml to ./converted_lau_test3.json
+2024-06-13 02:14:17: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test3.xml
+2024-06-13 02:14:25: User lau downloaded file converted_test3.json
+2024-06-13 02:15:54: User lau logged in as simple
+2024-06-13 02:15:57: User lau converted file ./test2.xml to ./converted_lau_test2.json
+2024-06-13 02:15:57: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test2.xml
+2024-06-13 02:16:02: User lau downloaded file converted_test2.json
+2024-06-13 06:49:48: User lau logged in as simple
+2024-06-13 06:49:51: User lau converted file ./test2.xml to ./converted_lau_test2.json
+2024-06-13 06:49:51: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test2.xml
+2024-06-13 06:49:56: User lau downloaded file converted_test2.json
+2024-06-13 06:56:06: User lau logged in as simple
+2024-06-13 06:56:54: User lau logged in as simple
+2024-06-13 06:57:03: User lau converted file ./test3.xml to ./converted_lau_test3.json
+2024-06-13 06:57:03: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test3.xml
+2024-06-13 06:57:10: User lau downloaded file converted_test3.json
+2024-06-13 07:11:04: User lau logged in as simple
+2024-06-13 07:11:07: User lau converted file ./test3.xml to ./converted_lau_test3.json
+2024-06-13 07:11:07: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test3.xml
+2024-06-13 07:11:10: User lau downloaded file converted_test3.json
+2024-06-13 07:12:52: User lau logged in as simple
+2024-06-13 07:12:54: User lau converted file ./test2.xml to ./converted_lau_test2.json
+2024-06-13 07:12:54: User lau uploaded file /mnt/c/Users/Horatiu/Desktop/test2.xml
+2024-06-13 07:31:23: User admin logged in as admin
+2024-06-13 07:31:36: User admin logged in as admin
+2024-06-13 07:34:29: User lau logged in as simple
+2024-06-13 07:37:45: User lau logged in as simple
